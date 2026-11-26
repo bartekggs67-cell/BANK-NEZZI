@@ -5,536 +5,314 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Bank Nezzi</title>
   <style>
-    * { box-sizing: border-box; font-family: system-ui, -apple-system, Arial, sans-serif; }
-    body {
-      margin: 0;
-      background: radial-gradient(circle at top, #172554 0%, #090d1a 55%);
-      color: #f8fafc;
-      padding: 20px;
-      min-height: 100vh;
-    }
-    .container { max-width: 900px; margin: 0 auto; }
-    .card {
-      background: rgba(19, 27, 46, 0.94);
-      border: 1px solid #263452;
-      border-radius: 16px;
-      padding: 20px;
-      margin-bottom: 16px;
-      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
-    }
-    h1, h2, h3 { margin: 0 0 10px; }
-    .muted { color: #94a3b8; font-size: 14px; line-height: 1.45; }
-    .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: center; }
-    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-    .tab-btn {
-      background: #1a243b;
-      color: #cbd5e1;
-      border: 1px solid #334155;
-      border-radius: 10px;
-      padding: 10px 15px;
-      font-weight: 700;
-      cursor: pointer;
-      font-size: 14px;
-    }
-    .tab-btn.active { background: #38bdf8; color: #082f49; border-color: #38bdf8; }
-    .tab-pane { display: none; }
-    .tab-pane.active { display: block; }
-    input {
-      background: #0b1020;
-      color: #fff;
-      border: 1px solid #334155;
-      border-radius: 10px;
-      padding: 11px 13px;
-      font-size: 14px;
-    }
-    input:focus { outline: none; border-color: #38bdf8; }
-    button { border: 0; border-radius: 10px; padding: 11px 16px; font-weight: 700; cursor: pointer; font-size: 14px; }
-    button:hover { opacity: 0.95; }
-    .blue { background: #38bdf8; color: #082f49; }
-    .dark { background: #1e293b; color: #f8fafc; border: 1px solid #334155; }
-    .green { background: #22c55e; color: #052e16; }
-    .amber { background: #f59e0b; color: #271300; }
-    .red { background: #ef4444; color: #fff; }
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 14px;
-      margin-top: 14px;
-    }
-    .stat-box {
-      background: #0b1020;
-      border: 1px solid #24304b;
-      border-radius: 14px;
-      padding: 16px;
-    }
-    .stat-label { color: #94a3b8; font-size: 13px; margin-bottom: 6px; }
-    .stat-value { font-size: 26px; font-weight: 800; color: #4ade80; }
-    .stat-value.blue-val { color: #38bdf8; }
-    .panel {
-      display: none;
-      margin-top: 14px;
-      padding: 14px;
-      border-radius: 12px;
-      background: #0b1020;
-      border: 1px solid #24304b;
-    }
-    .cmd { color: #4ade80; font-family: monospace; font-weight: 700; font-size: 16px; }
-    .msg-err { color: #f87171; font-size: 13px; margin-top: 10px; font-weight: 600; }
-    .msg-ok { color: #4ade80; font-size: 13px; margin-top: 10px; font-weight: 600; }
-    .row-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
-      padding: 11px 13px;
-      border-radius: 10px;
-      background: #0b1020;
-      border: 1px solid #24304b;
-      margin-top: 8px;
-      font-size: 14px;
-    }
-    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
-    .badge {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: rgba(56, 189, 248, 0.14);
-      color: #38bdf8;
-      font-size: 12px;
-      font-weight: 700;
-    }
+    * { box-sizing: border-box; font-family: Arial, sans-serif; }
+    body { margin: 0; background: #0c1222; color: #f8fafc; padding: 16px; }
+    .box { max-width: 860px; margin: 0 auto; }
+    .card { background: #151e35; border: 1px solid #29385c; border-radius: 14px; padding: 16px; margin-bottom: 14px; }
+    h1, h2, h3 { margin: 0 0 8px 0; }
+    .muted { color: #94a3b8; font-size: 13px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+    input { background: #090e1a; color: #fff; border: 1px solid #334155; border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+    button { border: 0; border-radius: 8px; padding: 10px 14px; font-weight: 700; cursor: pointer; font-size: 14px; }
+    .b-blue { background: #38bdf8; color: #082f49; }
+    .b-green { background: #22c55e; color: #052e16; }
+    .b-dark { background: #1e293b; color: #fff; border: 1px solid #334155; }
+    .b-amber { background: #f59e0b; color: #271300; }
+    .b-red { background: #ef4444; color: #fff; }
+    .sec { display: none; }
+    .sec.show { display: block; }
+    .item { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; background: #090e1a; border: 1px solid #243252; padding: 10px; border-radius: 8px; margin-top: 8px; font-size: 13px; }
+    .status { margin-top: 10px; font-size: 13px; font-weight: 700; color: #4ade80; }
+    .err { color: #f87171; }
   </style>
 </head>
 <body>
-  <div class="container">
+<div class="box">
+  <div class="card">
+    <h1>Bank <span style="color:#38bdf8">Nezzi</span></h1>
+    <div class="muted">Wpłaty w grze: <b>NezziBG</b> • Lokata: <b style="color:#4ade80">+10%</b></div>
+    <div class="row">
+      <button type="button" class="b-blue" onclick="openTab('konto')">Moje konto</button>
+      <button type="button" class="b-dark" onclick="openTab('topki')">Topki</button>
+      <button type="button" class="b-dark" onclick="openTab('admin')">Panel Admina</button>
+    </div>
+  </div>
+
+  <!-- ZAKŁADKA KONTO -->
+  <div id="tab-konto" class="sec show">
+    <div class="card" id="loginCard">
+      <h2>Logowanie / Rejestracja</h2>
+      <div class="row">
+        <input id="uNick" type="text" placeholder="Nick z Minecraft..." />
+        <input id="uPass" type="password" placeholder="Hasło (min. 4 znaki)" />
+      </div>
+      <div class="row">
+        <button type="button" class="b-blue" onclick="auth('login')">Zaloguj</button>
+        <button type="button" class="b-green" onclick="auth('register')">Zarejestruj się</button>
+      </div>
+      <div id="authStatus" class="status"></div>
+    </div>
+
+    <div class="card sec" id="userCard">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <h2>Gracz: <span id="meNick" style="color:#38bdf8"></span></h2>
+        <button type="button" class="b-dark" onclick="logout()">Wyloguj</button>
+      </div>
+      <div class="item"><span>Wpłacono łącznie:</span><b id="meDep" style="color:#38bdf8">0 $</b></div>
+      <div class="item"><span>Do odebrania (saldo):</span><b id="meBal" style="color:#4ade80">0 $</b></div>
+
+      <div class="row">
+        <input id="payAmt" type="number" min="1" placeholder="Kwota wpłaty ($)" style="width:160px" />
+        <button type="button" class="b-blue" onclick="makePay()">Generuj /pay</button>
+      </div>
+      <div id="payOut" class="status"></div>
+
+      <div class="row">
+        <input id="wdAmt" type="number" min="1" placeholder="Kwota wypłaty ($)" style="width:160px" />
+        <button type="button" class="b-amber" onclick="makeWd()">Wypłać</button>
+      </div>
+      <div id="wdOut" class="status"></div>
+    </div>
+
     <div class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <div>
-          <h1>Bank <span style="color:#38bdf8">Nezzi</span></h1>
-          <div class="muted">Wpłaty w grze na konto: <b>NezziBG</b> • Lokata: <b style="color:#4ade80">+10%</b></div>
-        </div>
-        <span class="badge">Konto gracza</span>
-      </div>
-      <div class="tabs">
-        <button type="button" class="tab-btn active" data-tab="konto">Moje konto</button>
-        <button type="button" class="tab-btn" data-tab="topki">Topki</button>
-        <button type="button" class="tab-btn" data-tab="admin">Panel Admina</button>
-      </div>
+      <h2>Lista wpłacających</h2>
+      <div id="depList" class="muted">Brak wpłat.</div>
     </div>
+  </div>
 
-    <div id="pane-konto" class="tab-pane active">
-      <div class="card" id="loginScreen">
-        <h2>Konto gracza</h2>
-        <div class="muted">
-          Wpisz swój nick z Minecrafta oraz hasło, a następnie kliknij <b>Zaloguj</b> lub <b>Zarejestruj się</b>.
-        </div>
+  <!-- ZAKŁADKA TOPKI -->
+  <div id="tab-topki" class="sec">
+    <div class="card">
+      <h2>Top saldo</h2>
+      <div id="topBal" class="muted">Brak danych.</div>
+    </div>
+    <div class="card">
+      <h2>Top wpłaty</h2>
+      <div id="topDep" class="muted">Brak danych.</div>
+    </div>
+  </div>
 
+  <!-- ZAKŁADKA ADMIN -->
+  <div id="tab-admin" class="sec">
+    <div class="card">
+      <h2 style="color:#38bdf8">Panel Admina</h2>
+      <div id="admLogin" class="row">
+        <input id="admPass" type="password" placeholder="Hasło admina" />
+        <button type="button" class="b-blue" onclick="admUnlock()">Odblokuj</button>
+      </div>
+      <div id="admPanel" class="sec">
         <div class="row">
-          <input id="loginNick" type="text" placeholder="Twój nick z Minecraft..." style="flex:1; min-width:170px;" />
-          <input id="loginPassword" type="password" placeholder="Twoje hasło (min. 4 znaki)..." style="flex:1; min-width:170px;" />
+          <button type="button" class="b-green" onclick="admAction('/api/interest', {})">+10% wszystkim</button>
         </div>
-
         <div class="row">
-          <button type="button" class="blue" id="btnLoginAction">Zaloguj</button>
-          <button type="button" class="green" id="btnRegisterAction">Zarejestruj się</button>
+          <input id="eNick" type="text" placeholder="Nick" style="width:130px" />
+          <input id="eBal" type="number" placeholder="Saldo" style="width:100px" />
+          <input id="eDep" type="number" placeholder="Wpłaty" style="width:100px" />
+          <button type="button" class="b-blue" onclick="saveUser()">Dodaj / Edytuj</button>
         </div>
-
-        <div id="authMessage" class="msg-err" style="display:none;"></div>
-      </div>
-
-      <div id="loggedInScreen" style="display:none;">
-        <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
-            <div>
-              <div class="muted">Zalogowany gracz</div>
-              <h2 style="font-size:24px; margin-top:2px;">
-                <span id="dashNick" style="color:#38bdf8;"></span>
-              </h2>
-            </div>
-            <button type="button" class="dark" id="btnLogout">Wyloguj</button>
-          </div>
-
-          <div class="stats-grid">
-            <div class="stat-box">
-              <div class="stat-label">Ile wpłacił łącznie</div>
-              <div class="stat-value blue-val" id="dashDeposited">0 $</div>
-            </div>
-            <div class="stat-box">
-              <div class="stat-label">Ile ma do odebrania (saldo)</div>
-              <div class="stat-value" id="dashBalance">0 $</div>
-            </div>
-          </div>
-
-          <div class="row" style="margin-top:16px;">
-            <input id="depositAmountInput" type="number" min="1" placeholder="Wpisz kwotę wpłaty ($)" style="width:200px;" />
-            <button type="button" class="blue" id="btnGenPay">Wpłać — generuj /pay</button>
-          </div>
-          <div id="depositMsg" style="display:none;"></div>
-          <div class="panel" id="payPanel"></div>
+        <div class="row">
+          <input id="sNick" type="text" placeholder="Nick" style="width:130px" />
+          <input id="sAmt" type="number" placeholder="Kwota" style="width:100px" />
+          <button type="button" class="b-dark" onclick="simSend(false)">Symuluj oczekującą</button>
+          <button type="button" class="b-green" onclick="simSend(true)">Symuluj i zaksięguj</button>
         </div>
-
-        <div class="card">
-          <h3>Wypłata środków</h3>
-          <div class="muted">Zleć wypłatę swojego dostępnego salda na konto w grze.</div>
-          <div class="row">
-            <input id="withdrawInput" type="number" min="1" placeholder="Kwota do wypłaty ($)" style="width:180px;" />
-            <button type="button" class="amber" id="btnWithdraw">Zleć wypłatę</button>
-          </div>
-          <div id="withdrawMsg" style="display:none;"></div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Lista wpłacających</h2>
-        <div id="depositorsList" class="muted">Brak wpłat.</div>
-      </div>
-    </div>
-
-    <div id="pane-topki" class="tab-pane">
-      <div class="card">
-        <h2>Topki graczy</h2>
-        <div class="muted">Ranking największych sald oraz łącznych wpłat na konto <b>NezziBG</b>.</div>
-        <div class="grid-2" style="margin-top:12px;">
-          <div>
-            <h3>Top saldo (do odebrania)</h3>
-            <div id="topBalanceList" class="muted">Brak danych.</div>
-          </div>
-          <div>
-            <h3>Top wpłaty</h3>
-            <div id="topDepositList" class="muted">Brak danych.</div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="pane-admin" class="tab-pane">
-      <div class="card">
-        <h2 style="color:#38bdf8;">Panel Admina</h2>
-        <div id="adminLogin" class="row">
-          <input id="adminPassInput" type="password" placeholder="Hasło administratora" />
-          <button type="button" class="blue" id="btnAdminLogin">Odblokuj</button>
-        </div>
-
-        <div id="adminContent" style="display:none;">
-          <div class="row">
-            <button type="button" class="green" id="btnInterest">+10% zysku</button>
-          </div>
-
-          <div class="card" style="margin-top:14px;">
-            <h3>Dodaj lub edytuj konto gracza</h3>
-            <div class="muted">Ustaw nick, saldo i sumę wpłat. Jeśli nick już istnieje, zaktualizuje dane.</div>
-            <div class="row">
-              <input id="editNick" type="text" placeholder="Nick gracza" style="width:160px;" />
-              <input id="editBalance" type="number" min="0" placeholder="Saldo ($)" style="width:120px;" />
-              <input id="editDeposited" type="number" min="0" placeholder="Wpłacono ($)" style="width:130px;" />
-              <button type="button" class="blue" id="btnSaveUser">Zapisz konto</button>
-            </div>
-          </div>
-
-          <div class="card" style="margin-top:14px;">
-            <h3>Symuluj wysłanie hajsu</h3>
-            <div class="muted">Symuluje przelew w grze od gracza na <b>NezziBG</b>.</div>
-            <div class="row">
-              <input id="simNick" type="text" placeholder="Nick gracza" style="width:160px;" />
-              <input id="simAmount" type="number" min="1" placeholder="Kwota ($)" style="width:120px;" />
-              <button type="button" class="dark" id="btnSimPending">Dodaj do oczekujących</button>
-              <button type="button" class="green" id="btnSimInstant">Symuluj i zaksięguj</button>
-            </div>
-          </div>
-
-          <h3 style="margin-top:14px;">Oczekujące wpłaty</h3>
-          <div id="pendingList"></div>
-
-          <h3 style="margin-top:14px;">Oczekujące wypłaty</h3>
-          <div id="withdrawList"></div>
-
-          <h3 style="margin-top:14px;">Zarządzanie graczami</h3>
-          <div id="usersList"></div>
-        </div>
+        <h3>Oczekujące wpłaty</h3>
+        <div id="admPend"></div>
+        <h3>Wypłaty</h3>
+        <div id="admWd"></div>
+        <h3>Gracze</h3>
+        <div id="admUsers"></div>
       </div>
     </div>
   </div>
 
-  <script>
-    let sessionUser = null;
-    let adminPass = "";
-    let latestState = { users: {}, pending: {}, withdraws: [] };
+  <div class="card">
+    <div class="muted">Podgląd działania: <span id="dbg" style="color:#38bdf8">Gotowe</span></div>
+  </div>
+</div>
 
-    function showAuthMsg(msg, isOk) {
-      const el = document.getElementById("authMessage");
-      if (!msg) {
-        el.style.display = "none";
-        el.textContent = "";
-        return;
-      }
-      el.style.display = "block";
-      el.className = isOk ? "msg-ok" : "msg-err";
-      el.textContent = msg;
-    }
+<script>
+let me = null;
+let adm = "";
+let dbState = { users: {}, pending: {}, withdraws: [] };
 
-    function showDepositMsg(msg, isOk) {
-      const el = document.getElementById("depositMsg");
-      if (!msg) {
-        el.style.display = "none";
-        el.textContent = "";
-        return;
-      }
-      el.style.display = "block";
-      el.className = isOk ? "msg-ok" : "msg-err";
-      el.textContent = msg;
-    }
+function dbg(t) {
+  document.getElementById("dbg").textContent = t;
+}
 
-    function showWithdrawMsg(msg, isOk) {
-      const el = document.getElementById("withdrawMsg");
-      if (!msg) {
-        el.style.display = "none";
-        el.textContent = "";
-        return;
-      }
-      el.style.display = "block";
-      el.className = isOk ? "msg-ok" : "msg-err";
-      el.textContent = msg;
-    }
+function openTab(name) {
+  dbg("Kliknięto zakładkę: " + name);
+  document.getElementById("tab-konto").classList.toggle("show", name === "konto");
+  document.getElementById("tab-topki").classList.toggle("show", name === "topki");
+  document.getElementById("tab-admin").classList.toggle("show", name === "admin");
+  render();
+}
 
-    function updateAuthScreens() {
-      const loginEl = document.getElementById("loginScreen");
-      const dashEl = document.getElementById("loggedInScreen");
+async function callApi(url, body) {
+  try {
+    const opts = body ? {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    } : { method: "GET" };
+    const r = await fetch(url, opts);
+    const j = await r.json().catch(() => ({}));
+    return { ok: r.ok && j.ok !== false, data: j };
+  } catch (e) {
+    return { ok: false, data: { error: "Błąd sieci: " + e.message } };
+  }
+}
 
-      if (sessionUser) {
-        loginEl.style.display = "none";
-        dashEl.style.display = "block";
-        const key = sessionUser.nick.toLowerCase();
-        const fresh = (latestState.users || {})[key] || {
-          nick: sessionUser.nick,
-          balance: 0,
-          totalDeposited: 0
-        };
-        document.getElementById("dashNick").textContent = fresh.nick;
-        document.getElementById("dashDeposited").textContent = Number(fresh.totalDeposited || 0) + " $";
-        document.getElementById("dashBalance").textContent = Number(fresh.balance || 0) + " $";
-      } else {
-        loginEl.style.display = "block";
-        dashEl.style.display = "none";
-        document.getElementById("payPanel").style.display = "none";
-        showDepositMsg("");
-        showWithdrawMsg("");
-      }
-    }
+async function sync() {
+  const res = await callApi("/api/state");
+  if (res.ok && res.data && res.data.users) {
+    dbState = res.data;
+    render();
+  }
+}
 
-    function setTab(tabName) {
-      document.querySelectorAll(".tab-btn").forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.tab === tabName);
-      });
-      document.querySelectorAll(".tab-pane").forEach(pane => {
-        pane.classList.toggle("active", pane.id === "pane-" + tabName);
-      });
-      renderAll(latestState);
-    }
+function render() {
+  const users = Object.values(dbState.users || {});
 
-    document.querySelectorAll(".tab-btn").forEach(btn => {
-      btn.addEventListener("click", () => setTab(btn.dataset.tab));
-    });
+  document.getElementById("loginCard").classList.toggle("show", !me);
+  document.getElementById("userCard").classList.toggle("show", Boolean(me));
+  if (me) {
+    const u = (dbState.users || {})[me.nick.toLowerCase()] || { nick: me.nick, balance: 0, totalDeposited: 0 };
+    document.getElementById("meNick").textContent = u.nick;
+    document.getElementById("meDep").textContent = (u.totalDeposited || 0) + " $";
+    document.getElementById("meBal").textContent = (u.balance || 0) + " $";
+  }
 
-    async function postJson(url, payload) {
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json().catch(() => ({}));
-        return { ok: res.ok && data.ok !== false, status: res.status, data };
-      } catch (_) {
-        return { ok: false, status: 0, data: { error: "Brak połączenia z serwerem (odśwież za chwilę)." } };
-      }
-    }
+  const depUsers = users.filter(u => (u.totalDeposited || 0) > 0).sort((a, b) => b.totalDeposited - a.totalDeposited);
+  document.getElementById("depList").innerHTML = depUsers.length
+    ? depUsers.map((u, i) => '<div class="item"><span>#' + (i + 1) + ' <b>' + u.nick + '</b></span><b style="color:#4ade80">Wpłacono: ' + u.totalDeposited + ' $ • Saldo: ' + u.balance + ' $</b></div>').join("")
+    : '<div class="muted">Brak wpłat.</div>';
 
-    async function loadState() {
-      try {
-        const res = await fetch("/api/state");
-        if (!res.ok) return;
-        latestState = await res.json();
-        renderAll(latestState);
-      } catch (_) {}
-    }
+  const byBal = [...users].sort((a, b) => (b.balance || 0) - (a.balance || 0));
+  const byDep = [...users].sort((a, b) => (b.totalDeposited || 0) - (a.totalDeposited || 0));
+  document.getElementById("topBal").innerHTML = byBal.length
+    ? byBal.map((u, i) => '<div class="item"><span>#' + (i + 1) + ' <b>' + u.nick + '</b></span><b style="color:#4ade80">' + (u.balance || 0) + ' $</b></div>').join("")
+    : '<div class="muted">Brak danych.</div>';
+  document.getElementById("topDep").innerHTML = byDep.length
+    ? byDep.map((u, i) => '<div class="item"><span>#' + (i + 1) + ' <b>' + u.nick + '</b></span><b style="color:#38bdf8">' + (u.totalDeposited || 0) + ' $</b></div>').join("")
+    : '<div class="muted">Brak danych.</div>';
 
-    function renderRanking(targetId, items, valueLabelFn) {
-      const el = document.getElementById(targetId);
-      el.innerHTML = "";
-      if (!items.length) {
-        el.innerHTML = '<div class="muted">Brak danych.</div>';
-        return;
-      }
-      items.slice(0, 10).forEach((u, idx) => {
-        const row = document.createElement("div");
-        row.className = "row-item";
-        const left = document.createElement("span");
-        const rank = document.createElement("b");
-        rank.textContent = "#" + (idx + 1) + " ";
-        const name = document.createElement("span");
-        name.textContent = u.nick;
-        left.append(rank, name);
+  if (adm) {
+    document.getElementById("admPanel").classList.add("show");
+    document.getElementById("admPend").innerHTML = Object.entries(dbState.pending || {}).map(([k, p]) =>
+      '<div class="item"><span><b>' + p.nick + '</b> — ' + p.amount + ' $</span><button type="button" class="b-green" onclick="admAction(\\x27/api/approve\\x27,{key:\\x27' + k + '\\x27})">Zatwierdź</button></div>'
+    ).join("") || '<div class="muted">Brak.</div>';
 
-        const right = document.createElement("span");
-        right.style.color = "#4ade80";
-        right.style.fontWeight = "700";
-        right.textContent = valueLabelFn(u);
+    document.getElementById("admWd").innerHTML = (dbState.withdraws || []).filter(w => w.status === "OCZEKUJE").map(w =>
+      '<div class="item"><span>/pay ' + w.nick + ' ' + w.amount + '</span><button type="button" class="b-amber" onclick="admAction(\\x27/api/done-withdraw\\x27,{id:' + w.id + '})">Wypłacono</button></div>'
+    ).join("") || '<div class="muted">Brak.</div>';
 
-        row.append(left, right);
-        el.appendChild(row);
-      });
-    }
+    document.getElementById("admUsers").innerHTML = Object.entries(dbState.users || {}).map(([k, u]) =>
+      '<div class="item"><span><b>' + u.nick + '</b> • wpłaty: ' + (u.totalDeposited || 0) + ' $ • saldo: ' + (u.balance || 0) + ' $</span><span><button type="button" class="b-blue" onclick="fillEdit(\\x27' + u.nick + '\\x27,' + (u.balance || 0) + ',' + (u.totalDeposited || 0) + ')">Edytuj</button> <button type="button" class="b-red" onclick="admAction(\\x27/api/delete-user\\x27,{key:\\x27' + k + '\\x27})">Usuń</button></span></div>'
+    ).join("") || '<div class="muted">Brak.</div>';
+  }
+}
 
-    function renderAll(data) {
-      const users = Object.values(data.users || {});
-      const depositors = users
-        .filter(u => u.totalDeposited > 0)
-        .sort((a, b) => b.totalDeposited - a.totalDeposited);
+async function auth(mode) {
+  dbg("Kliknięto: " + mode);
+  const nick = document.getElementById("uNick").value.trim();
+  const password = document.getElementById("uPass").value;
+  const st = document.getElementById("authStatus");
+  if (!nick || !password) {
+    st.className = "status err";
+    st.textContent = "Wpisz nick i hasło.";
+    return;
+  }
+  const r = await callApi("/api/auth", { nick, password, mode });
+  if (!r.ok || !r.data.user) {
+    st.className = "status err";
+    st.textContent = r.data.error || "Błąd logowania.";
+    return;
+  }
+  me = { nick: r.data.user.nick, password };
+  st.textContent = "";
+  await sync();
+}
 
-      const listEl = document.getElementById("depositorsList");
-      listEl.innerHTML = "";
-      if (!depositors.length) {
-        listEl.innerHTML = '<div class="muted">Brak wpłat.</div>';
-      } else {
-        depositors.forEach((u, idx) => {
-          const item = document.createElement("div");
-          item.className = "row-item";
-          const left = document.createElement("span");
-          left.innerHTML = "#" + (idx + 1) + " <b></b>";
-          left.querySelector("b").textContent = u.nick;
-          const right = document.createElement("span");
-          right.style.color = "#4ade80";
-          right.style.fontWeight = "700";
-          right.textContent = "Wpłacono: " + u.totalDeposited + " $ • Saldo: " + u.balance + " $";
-          item.append(left, right);
-          listEl.appendChild(item);
-        });
-      }
+function logout() {
+  me = null;
+  document.getElementById("uPass").value = "";
+  render();
+}
 
-      const topBalance = [...users].sort((a, b) => b.balance - a.balance);
-      const topDeposit = [...users].sort((a, b) => b.totalDeposited - a.totalDeposited);
-      renderRanking("topBalanceList", topBalance, u => u.balance + " $");
-      renderRanking("topDepositList", topDeposit, u => u.totalDeposited + " $");
+async function makePay() {
+  if (!me) return;
+  const amount = Math.floor(Number(document.getElementById("payAmt").value) || 0);
+  const out = document.getElementById("payOut");
+  if (amount <= 0) {
+    out.className = "status err";
+    out.textContent = "Wpisz kwotę większą od 0.";
+    return;
+  }
+  const r = await callApi("/api/pending", { nick: me.nick, amount });
+  if (!r.ok) {
+    out.className = "status err";
+    out.textContent = r.data.error || "Błąd.";
+    return;
+  }
+  out.className = "status";
+  out.textContent = "Wyślij w grze: /pay NezziBG " + r.data.amount;
+  await sync();
+}
 
-      updateAuthScreens();
+async function makeWd() {
+  if (!me) return;
+  const amount = Math.floor(Number(document.getElementById("wdAmt").value) || 0);
+  const out = document.getElementById("wdOut");
+  const r = await callApi("/api/withdraw", { nick: me.nick, password: me.password, amount });
+  if (!r.ok) {
+    out.className = "status err";
+    out.textContent = r.data.error || "Za mało salda.";
+    return;
+  }
+  out.className = "status";
+  out.textContent = "Wysłano wypłatę " + amount + " $.";
+  document.getElementById("wdAmt").value = "";
+  await sync();
+}
 
-      if (adminPass) {
-        renderAdmin(data);
-      }
-    }
+function admUnlock() {
+  const p = document.getElementById("admPass").value;
+  if (p !== "7532252") return alert("Złe hasło");
+  adm = p;
+  document.getElementById("admLogin").style.display = "none";
+  render();
+}
 
-    function renderAdmin(data) {
-      const pendingEl = document.getElementById("pendingList");
-      pendingEl.innerHTML = "";
-      Object.entries(data.pending || {}).forEach(([key, p]) => {
-        const row = document.createElement("div");
-        row.className = "row-item";
-        const span = document.createElement("span");
-        span.textContent = p.nick + " — " + p.amount + " $";
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "green";
-        btn.textContent = "Zatwierdź";
-        btn.onclick = async () => {
-          await postJson("/api/approve", { key, pass: adminPass });
-          loadState();
-        };
-        row.append(span, btn);
-        pendingEl.appendChild(row);
-      });
+async function admAction(url, body) {
+  await callApi(url, { ...body, pass: adm });
+  await sync();
+}
 
-      const withdrawEl = document.getElementById("withdrawList");
-      withdrawEl.innerHTML = "";
-      (data.withdraws || []).filter(w => w.status === "OCZEKUJE").forEach(w => {
-        const row = document.createElement("div");
-        row.className = "row-item";
-        const span = document.createElement("span");
-        span.textContent = "/pay " + w.nick + " " + w.amount;
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "amber";
-        btn.textContent = "Wypłacono";
-        btn.onclick = async () => {
-          await postJson("/api/done-withdraw", { id: w.id, pass: adminPass });
-          loadState();
-        };
-        row.append(span, btn);
-        withdrawEl.appendChild(row);
-      });
+function fillEdit(nick, bal, dep) {
+  document.getElementById("eNick").value = nick;
+  document.getElementById("eBal").value = bal;
+  document.getElementById("eDep").value = dep;
+}
 
-      const usersEl = document.getElementById("usersList");
-      usersEl.innerHTML = "";
-      Object.entries(data.users || {}).forEach(([key, u]) => {
-        const row = document.createElement("div");
-        row.className = "row-item";
+async function saveUser() {
+  await admAction("/api/save-user", {
+    nick: document.getElementById("eNick").value.trim(),
+    balance: Number(document.getElementById("eBal").value || 0),
+    totalDeposited: Number(document.getElementById("eDep").value || 0)
+  });
+}
 
-        const span = document.createElement("span");
-        span.textContent = u.nick + " • wpłaty: " + u.totalDeposited + " $ • saldo: " + u.balance + " $";
+async function simSend(instant) {
+  await admAction("/api/simulate-send", {
+    nick: document.getElementById("sNick").value.trim(),
+    amount: Number(document.getElementById("sAmt").value || 0),
+    instant
+  });
+}
 
-        const actions = document.createElement("div");
-        actions.style.display = "flex";
-        actions.style.gap = "8px";
-
-        const editBtn = document.createElement("button");
-        editBtn.type = "button";
-        editBtn.className = "blue";
-        editBtn.textContent = "Edytuj";
-        editBtn.onclick = () => {
-          document.getElementById("editNick").value = u.nick;
-          document.getElementById("editBalance").value = u.balance;
-          document.getElementById("editDeposited").value = u.totalDeposited;
-        };
-
-        const delBtn = document.createElement("button");
-        delBtn.type = "button";
-        delBtn.className = "red";
-        delBtn.textContent = "Usuń";
-        delBtn.onclick = async () => {
-          await postJson("/api/delete-user", { key, pass: adminPass });
-          loadState();
-        };
-
-        actions.append(editBtn, delBtn);
-        row.append(span, actions);
-        usersEl.appendChild(row);
-      });
-    }
-
-    async function handleAuth(mode) {
-      const nick = document.getElementById("loginNick").value.trim();
-      const password = document.getElementById("loginPassword").value;
-      showAuthMsg("");
-
-      if (!nick) {
-        return showAuthMsg("Wpisz swój nick z Minecrafta.");
-      }
-      if (!password) {
-        return showAuthMsg("Wpisz hasło.");
-      }
-
-      const res = await postJson("/api/auth", { nick, password, mode });
-      if (!res.ok || !res.data.user) {
-        return showAuthMsg(res.data.error || "Błąd logowania lub rejestracji.");
-      }
-
-      sessionUser = { nick: res.data.user.nick, password };
-      document.getElementById("loginPassword").value = "";
-      showAuthMsg("");
-      await loadState();
-    }
-
-    document.getElementById("btnLoginAction").addEventListener("click", () => handleAuth("login"));
-    document.getElementById("btnRegisterAction").addEventListener("click", () => handleAuth("register"));
-
-    document.getElementById("btnLogout").addEventListener("click", () => {
-      sessionUser = null;
-      document.getElementById("loginNick").value = "";
-      document.getElementById("loginPassword").value = "";
-      showAuthMsg("");
-      updateAuthScreens();
-    });
-
-    document.getElementById("btnGenPay").addEventListener("click", async () => {
-      if (!sessionUser) return;
-      
+sync();
+setInterval(sync, 3000);
+</script>
+</body>
+</html>
