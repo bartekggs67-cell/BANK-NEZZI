@@ -4,10 +4,16 @@ const path = require("path");
 
 const PORT = process.env.PORT || 3000;
 const PASS = "7532252";
+const DAY_MS = 24 * 60 * 60 * 1000;
 const DATA_FILE = path.join(__dirname, "data.json");
 const HTML_FILE = path.join(__dirname, "index.html");
 
-let db = { users: {}, pending: {}, withdraws: [] };
+let db = {
+  users: {},
+  pending: {},
+  withdraws: [],
+  lastDailyBonusAt: Date.now()
+};
 
 if (fs.existsSync(DATA_FILE)) {
   try {
@@ -15,7 +21,8 @@ if (fs.existsSync(DATA_FILE)) {
     db = {
       users: parsed.users || {},
       pending: parsed.pending || {},
-      withdraws: parsed.withdraws || []
+      withdraws: parsed.withdraws || [],
+      lastDailyBonusAt: Number(parsed.lastDailyBonusAt) || Date.now()
     };
   } catch (_) {}
 }
@@ -34,6 +41,39 @@ function simpleHash(str) {
     h = Math.imul(h, 16777619);
   }
   return (h >>> 0).toString(16);
+}
+
+function applyTenPercentOnce() {
+  Object.values(db.users || {}).forEach(u => {
+    const dep = Number(u.totalDeposited || 0);
+    const bal = Number(u.balance || 0);
+    if (dep > 0) {
+      u.totalDeposited = Math.floor(dep * 1.1);
+    }
+    if (bal > 0) {
+      u.balance = Math.floor(bal * 1.1);
+    } else if (dep > 0) {
+      u.balance = Math.floor(dep * 1.1);
+    }
+  });
+}
+
+function check24hBonus() {
+  const now = Date.now();
+  if (!db.lastDailyBonusAt) {
+    db.lastDailyBonusAt = now;
+    saveDb();
+    return;
+  }
+  const elapsed = now - db.lastDailyBonusAt;
+  if (elapsed >= DAY_MS) {
+    const cycles = Math.floor(elapsed / DAY_MS);
+    for (let i = 0; i < cycles; i++) {
+      applyTenPercentOnce();
+    }
+    db.lastDailyBonusAt += cycles * DAY_MS;
+    saveDb();
+  }
 }
 
 function ensureUser(nick) {
@@ -104,6 +144,7 @@ function simulateSend(nick, amount, instantCredit) {
 }
 
 function getPublicState() {
+  check24hBonus();
   const safeUsers = {};
   for (const [k, u] of Object.entries(db.users || {})) {
     safeUsers[k] = {
@@ -113,10 +154,12 @@ function getPublicState() {
       hasPassword: Boolean(u.passwordHash)
     };
   }
+  const nextBonusInMs = Math.max(0, DAY_MS - (Date.now() - (db.lastDailyBonusAt || Date.now())));
   return {
     users: safeUsers,
     pending: db.pending || {},
-    withdraws: db.withdraws || []
+    withdraws: db.withdraws || [],
+    nextBonusInMs
   };
 }
 
@@ -141,6 +184,8 @@ function sendJson(res, code, obj) {
 }
 
 const server = http.createServer((req, res) => {
+  check24hBonus();
+
   if (req.method === "GET" && req.url === "/") {
     if (!fs.existsSync(HTML_FILE)) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -283,9 +328,8 @@ const server = http.createServer((req, res) => {
           saveDb();
         }
       } else if (req.url === "/api/interest") {
-        Object.values(db.users).forEach(u => {
-          if (u.balance > 0) u.balance = Math.floor(u.balance * 1.1);
-        });
+        applyTenPercentOnce();
+        db.lastDailyBonusAt = Date.now();
         saveDb();
       }
 
@@ -297,6 +341,9 @@ const server = http.createServer((req, res) => {
   res.end("Not found");
 });
 
+setInterval(check24hBonus, 60 * 1000);
+
 server.listen(PORT, () => {
   console.log("Bank Nezzi dziala na porcie", PORT);
 });
+                  
