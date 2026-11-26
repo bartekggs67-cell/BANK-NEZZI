@@ -1,303 +1,540 @@
-    const http = require("http");
-const fs = require("fs");
-const path = require("path");
-
-const PORT = process.env.PORT || 3000;
-const PASS = "7532252";
-const DATA_FILE = path.join(__dirname, "data.json");
-const HTML_FILE = path.join(__dirname, "index.html");
-
-let db = { users: {}, pending: {}, withdraws: [] };
-
-if (fs.existsSync(DATA_FILE)) {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-    db = {
-      users: parsed.users || {},
-      pending: parsed.pending || {},
-      withdraws: parsed.withdraws || []
-    };
-  } catch (_) {}
-}
-
-function saveDb() {
-  try {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2), "utf8");
-  } catch (_) {}
-}
-
-function simpleHash(str) {
-  let h = 2166136261;
-  const s = String(str || "");
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (h >>> 0).toString(16);
-}
-
-function ensureUser(nick) {
-  const cleanNick = String(nick || "").trim();
-  const key = cleanNick.toLowerCase();
-  if (!key) return null;
-  if (!db.users[key]) {
-    db.users[key] = {
-      nick: cleanNick,
-      balance: 0,
-      totalDeposited: 0,
-      passwordHash: ""
-    };
-  } else if (!db.users[key].nick) {
-    db.users[key].nick = cleanNick;
-  }
-  return db.users[key];
-}
-
-function addBalance(nick, amount) {
-  const cleanNick = String(nick || "").trim();
-  const key = cleanNick.toLowerCase();
-  const value = Math.floor(Number(amount) || 0);
-  if (!key || value <= 0) return;
-
-  const user = ensureUser(cleanNick);
-  user.balance += value;
-  user.totalDeposited += value;
-  delete db.pending[key];
-  saveDb();
-}
-
-function upsertUser(nick, balance, totalDeposited) {
-  const cleanNick = String(nick || "").trim();
-  const key = cleanNick.toLowerCase();
-  if (!key) return;
-
-  const existing = db.users[key];
-  db.users[key] = {
-    nick: cleanNick,
-    balance: Math.max(0, Math.floor(Number(balance) || 0)),
-    totalDeposited: Math.max(0, Math.floor(Number(totalDeposited) || 0)),
-    passwordHash: existing ? existing.passwordHash || "" : ""
-  };
-  saveDb();
-}
-
-function deleteUser(key) {
-  const k = String(key || "").trim().toLowerCase();
-  if (!k) return;
-  delete db.users[k];
-  delete db.pending[k];
-  saveDb();
-}
-
-function simulateSend(nick, amount, instantCredit) {
-  const cleanNick = String(nick || "").trim();
-  const key = cleanNick.toLowerCase();
-  const value = Math.floor(Number(amount) || 0);
-  if (!key || value <= 0) return;
-
-  if (instantCredit) {
-    addBalance(cleanNick, value);
-  } else {
-    db.pending[key] = { nick: cleanNick, amount: value };
-    saveDb();
-  }
-}
-
-function getPublicState() {
-  const safeUsers = {};
-  for (const [k, u] of Object.entries(db.users || {})) {
-    safeUsers[k] = {
-      nick: u.nick,
-      balance: Number(u.balance || 0),
-      totalDeposited: Number(u.totalDeposited || 0),
-      hasPassword: Boolean(u.passwordHash)
-    };
-  }
-  return {
-    users: safeUsers,
-    pending: db.pending || {},
-    withdraws: db.withdraws || []
-  };
-}
-
-function readBody(req, cb) {
-  let body = "";
-  req.on("data", chunk => {
-    body += chunk;
-    if (body.length > 1e6) req.destroy();
-  });
-  req.on("end", () => {
-    try {
-      cb(body ? JSON.parse(body) : {});
-    } catch (_) {
-      cb({});
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bank Nezzi</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, Arial, sans-serif; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #172554 0%, #090d1a 55%);
+      color: #f8fafc;
+      padding: 20px;
+      min-height: 100vh;
     }
-  });
-}
-
-function sendJson(res, code, obj) {
-  res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(obj));
-}
-
-const server = http.createServer((req, res) => {
-  if (req.method === "GET" && req.url === "/") {
-    if (!fs.existsSync(HTML_FILE)) {
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      return res.end("<h1>Bank Nezzi</h1><p>Brak pliku index.html w repozytorium.</p>");
+    .container { max-width: 900px; margin: 0 auto; }
+    .card {
+      background: rgba(19, 27, 46, 0.94);
+      border: 1px solid #263452;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
     }
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    return fs.createReadStream(HTML_FILE).pipe(res);
-  }
+    h1, h2, h3 { margin: 0 0 10px; }
+    .muted { color: #94a3b8; font-size: 14px; line-height: 1.45; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: center; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .tab-btn {
+      background: #1a243b;
+      color: #cbd5e1;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 10px 15px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .tab-btn.active { background: #38bdf8; color: #082f49; border-color: #38bdf8; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    input {
+      background: #0b1020;
+      color: #fff;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 11px 13px;
+      font-size: 14px;
+    }
+    input:focus { outline: none; border-color: #38bdf8; }
+    button { border: 0; border-radius: 10px; padding: 11px 16px; font-weight: 700; cursor: pointer; font-size: 14px; }
+    button:hover { opacity: 0.95; }
+    .blue { background: #38bdf8; color: #082f49; }
+    .dark { background: #1e293b; color: #f8fafc; border: 1px solid #334155; }
+    .green { background: #22c55e; color: #052e16; }
+    .amber { background: #f59e0b; color: #271300; }
+    .red { background: #ef4444; color: #fff; }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+    .stat-box {
+      background: #0b1020;
+      border: 1px solid #24304b;
+      border-radius: 14px;
+      padding: 16px;
+    }
+    .stat-label { color: #94a3b8; font-size: 13px; margin-bottom: 6px; }
+    .stat-value { font-size: 26px; font-weight: 800; color: #4ade80; }
+    .stat-value.blue-val { color: #38bdf8; }
+    .panel {
+      display: none;
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: 12px;
+      background: #0b1020;
+      border: 1px solid #24304b;
+    }
+    .cmd { color: #4ade80; font-family: monospace; font-weight: 700; font-size: 16px; }
+    .msg-err { color: #f87171; font-size: 13px; margin-top: 10px; font-weight: 600; }
+    .msg-ok { color: #4ade80; font-size: 13px; margin-top: 10px; font-weight: 600; }
+    .row-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 11px 13px;
+      border-radius: 10px;
+      background: #0b1020;
+      border: 1px solid #24304b;
+      margin-top: 8px;
+      font-size: 14px;
+    }
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.14);
+      color: #38bdf8;
+      font-size: 12px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h1>Bank <span style="color:#38bdf8">Nezzi</span></h1>
+          <div class="muted">Wpłaty w grze na konto: <b>NezziBG</b> • Lokata: <b style="color:#4ade80">+10%</b></div>
+        </div>
+        <span class="badge">Konto gracza</span>
+      </div>
+      <div class="tabs">
+        <button type="button" class="tab-btn active" data-tab="konto">Moje konto</button>
+        <button type="button" class="tab-btn" data-tab="topki">Topki</button>
+        <button type="button" class="tab-btn" data-tab="admin">Panel Admina</button>
+      </div>
+    </div>
 
-  if (req.method === "GET" && req.url === "/api/state") {
-    return sendJson(res, 200, getPublicState());
-  }
+    <div id="pane-konto" class="tab-pane active">
+      <div class="card" id="loginScreen">
+        <h2>Konto gracza</h2>
+        <div class="muted">
+          Wpisz swój nick z Minecrafta oraz hasło, a następnie kliknij <b>Zaloguj</b> lub <b>Zarejestruj się</b>.
+        </div>
 
-  if (req.method === "POST") {
-    return readBody(req, data => {
-      if (req.url === "/api/auth") {
-        const cleanNick = String(data.nick || "").trim();
-        const key = cleanNick.toLowerCase();
-        const password = String(data.password || "");
-        const mode = String(data.mode || "login");
+        <div class="row">
+          <input id="loginNick" type="text" placeholder="Twój nick z Minecraft..." style="flex:1; min-width:170px;" />
+          <input id="loginPassword" type="password" placeholder="Twoje hasło (min. 4 znaki)..." style="flex:1; min-width:170px;" />
+        </div>
 
-        if (!cleanNick) {
-          return sendJson(res, 400, { ok: false, error: "Podaj nick z Minecrafta." });
-        }
-        if (password.length < 4) {
-          return sendJson(res, 400, { ok: false, error: "Hasło musi mieć co najmniej 4 znaki." });
-        }
+        <div class="row">
+          <button type="button" class="blue" id="btnLoginAction">Zaloguj</button>
+          <button type="button" class="green" id="btnRegisterAction">Zarejestruj się</button>
+        </div>
 
-        const existing = db.users[key];
-        const hashed = simpleHash(password);
+        <div id="authMessage" class="msg-err" style="display:none;"></div>
+      </div>
 
-        if (mode === "register") {
-          if (existing && existing.passwordHash) {
-            return sendJson(res, 400, {
-              ok: false,
-              error: "Ten nick ma już konto — kliknij Zaloguj."
-            });
-          }
-          const user = ensureUser(cleanNick);
-          user.passwordHash = hashed;
-          saveDb();
-          return sendJson(res, 200, {
-            ok: true,
-            user: {
-              nick: user.nick,
-              balance: user.balance,
-              totalDeposited: user.totalDeposited
-            }
-          });
-        }
+      <div id="loggedInScreen" style="display:none;">
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div class="muted">Zalogowany gracz</div>
+              <h2 style="font-size:24px; margin-top:2px;">
+                <span id="dashNick" style="color:#38bdf8;"></span>
+              </h2>
+            </div>
+            <button type="button" class="dark" id="btnLogout">Wyloguj</button>
+          </div>
 
-        if (!existing || !existing.passwordHash) {
-          return sendJson(res, 400, {
-            ok: false,
-            error: "Nie ma jeszcze konta na ten nick — kliknij Zarejestruj się."
-          });
-        }
+          <div class="stats-grid">
+            <div class="stat-box">
+              <div class="stat-label">Ile wpłacił łącznie</div>
+              <div class="stat-value blue-val" id="dashDeposited">0 $</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Ile ma do odebrania (saldo)</div>
+              <div class="stat-value" id="dashBalance">0 $</div>
+            </div>
+          </div>
 
-        if (existing.passwordHash !== hashed) {
-          return sendJson(res, 401, {
-            ok: false,
-            error: "Złe hasło."
-          });
-        }
+          <div class="row" style="margin-top:16px;">
+            <input id="depositAmountInput" type="number" min="1" placeholder="Wpisz kwotę wpłaty ($)" style="width:200px;" />
+            <button type="button" class="blue" id="btnGenPay">Wpłać — generuj /pay</button>
+          </div>
+          <div id="depositMsg" style="display:none;"></div>
+          <div class="panel" id="payPanel"></div>
+        </div>
 
-        return sendJson(res, 200, {
-          ok: true,
-          user: {
-            nick: existing.nick,
-            balance: existing.balance,
-            totalDeposited: existing.totalDeposited
-          }
-        });
+        <div class="card">
+          <h3>Wypłata środków</h3>
+          <div class="muted">Zleć wypłatę swojego dostępnego salda na konto w grze.</div>
+          <div class="row">
+            <input id="withdrawInput" type="number" min="1" placeholder="Kwota do wypłaty ($)" style="width:180px;" />
+            <button type="button" class="amber" id="btnWithdraw">Zleć wypłatę</button>
+          </div>
+          <div id="withdrawMsg" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Lista wpłacających</h2>
+        <div id="depositorsList" class="muted">Brak wpłat.</div>
+      </div>
+    </div>
+
+    <div id="pane-topki" class="tab-pane">
+      <div class="card">
+        <h2>Topki graczy</h2>
+        <div class="muted">Ranking największych sald oraz łącznych wpłat na konto <b>NezziBG</b>.</div>
+        <div class="grid-2" style="margin-top:12px;">
+          <div>
+            <h3>Top saldo (do odebrania)</h3>
+            <div id="topBalanceList" class="muted">Brak danych.</div>
+          </div>
+          <div>
+            <h3>Top wpłaty</h3>
+            <div id="topDepositList" class="muted">Brak danych.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="pane-admin" class="tab-pane">
+      <div class="card">
+        <h2 style="color:#38bdf8;">Panel Admina</h2>
+        <div id="adminLogin" class="row">
+          <input id="adminPassInput" type="password" placeholder="Hasło administratora" />
+          <button type="button" class="blue" id="btnAdminLogin">Odblokuj</button>
+        </div>
+
+        <div id="adminContent" style="display:none;">
+          <div class="row">
+            <button type="button" class="green" id="btnInterest">+10% zysku</button>
+          </div>
+
+          <div class="card" style="margin-top:14px;">
+            <h3>Dodaj lub edytuj konto gracza</h3>
+            <div class="muted">Ustaw nick, saldo i sumę wpłat. Jeśli nick już istnieje, zaktualizuje dane.</div>
+            <div class="row">
+              <input id="editNick" type="text" placeholder="Nick gracza" style="width:160px;" />
+              <input id="editBalance" type="number" min="0" placeholder="Saldo ($)" style="width:120px;" />
+              <input id="editDeposited" type="number" min="0" placeholder="Wpłacono ($)" style="width:130px;" />
+              <button type="button" class="blue" id="btnSaveUser">Zapisz konto</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:14px;">
+            <h3>Symuluj wysłanie hajsu</h3>
+            <div class="muted">Symuluje przelew w grze od gracza na <b>NezziBG</b>.</div>
+            <div class="row">
+              <input id="simNick" type="text" placeholder="Nick gracza" style="width:160px;" />
+              <input id="simAmount" type="number" min="1" placeholder="Kwota ($)" style="width:120px;" />
+              <button type="button" class="dark" id="btnSimPending">Dodaj do oczekujących</button>
+              <button type="button" class="green" id="btnSimInstant">Symuluj i zaksięguj</button>
+            </div>
+          </div>
+
+          <h3 style="margin-top:14px;">Oczekujące wpłaty</h3>
+          <div id="pendingList"></div>
+
+          <h3 style="margin-top:14px;">Oczekujące wypłaty</h3>
+          <div id="withdrawList"></div>
+
+          <h3 style="margin-top:14px;">Zarządzanie graczami</h3>
+          <div id="usersList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let sessionUser = null;
+    let adminPass = "";
+    let latestState = { users: {}, pending: {}, withdraws: [] };
+
+    function showAuthMsg(msg, isOk) {
+      const el = document.getElementById("authMessage");
+      if (!msg) {
+        el.style.display = "none";
+        el.textContent = "";
+        return;
       }
+      el.style.display = "block";
+      el.className = isOk ? "msg-ok" : "msg-err";
+      el.textContent = msg;
+    }
 
-      if (req.url === "/api/pending") {
-        const nick = String(data.nick || "").trim();
-        const amount = Math.floor(Number(data.amount) || 0);
-        if (!nick) {
-          return sendJson(res, 400, { ok: false, error: "Brak nicku" });
-        }
-        if (amount <= 0) {
-          return sendJson(res, 400, { ok: false, error: "Wpisz kwotę większą od 0." });
-        }
-        db.pending[nick.toLowerCase()] = { nick, amount };
-        saveDb();
-        return sendJson(res, 200, { ok: true, amount });
+    function showDepositMsg(msg, isOk) {
+      const el = document.getElementById("depositMsg");
+      if (!msg) {
+        el.style.display = "none";
+        el.textContent = "";
+        return;
       }
+      el.style.display = "block";
+      el.className = isOk ? "msg-ok" : "msg-err";
+      el.textContent = msg;
+    }
 
-      if (req.url === "/api/withdraw") {
-        const key = String(data.nick || "").trim().toLowerCase();
-        const password = String(data.password || "");
-        const amount = Math.floor(Number(data.amount) || 0);
-        const user = db.users[key];
-
-        if (!user || !user.passwordHash || user.passwordHash !== simpleHash(password)) {
-          return sendJson(res, 401, { ok: false, error: "Zaloguj się ponownie." });
-        }
-        if (amount <= 0 || user.balance < amount) {
-          return sendJson(res, 400, { ok: false, error: "Za małe saldo do wypłaty." });
-        }
-
-        user.balance -= amount;
-        db.withdraws.unshift({
-          id: Date.now(),
-          nick: user.nick,
-          amount,
-          status: "OCZEKUJE"
-        });
-        saveDb();
-        return sendJson(res, 200, {
-          ok: true,
-          user: {
-            nick: user.nick,
-            balance: user.balance,
-            totalDeposited: user.totalDeposited
-          }
-        });
+    function showWithdrawMsg(msg, isOk) {
+      const el = document.getElementById("withdrawMsg");
+      if (!msg) {
+        el.style.display = "none";
+        el.textContent = "";
+        return;
       }
+      el.style.display = "block";
+      el.className = isOk ? "msg-ok" : "msg-err";
+      el.textContent = msg;
+    }
 
-      if (data.pass !== PASS) {
-        return sendJson(res, 403, { error: "Brak dostepu" });
+    function updateAuthScreens() {
+      const loginEl = document.getElementById("loginScreen");
+      const dashEl = document.getElementById("loggedInScreen");
+
+      if (sessionUser) {
+        loginEl.style.display = "none";
+        dashEl.style.display = "block";
+        const key = sessionUser.nick.toLowerCase();
+        const fresh = (latestState.users || {})[key] || {
+          nick: sessionUser.nick,
+          balance: 0,
+          totalDeposited: 0
+        };
+        document.getElementById("dashNick").textContent = fresh.nick;
+        document.getElementById("dashDeposited").textContent = Number(fresh.totalDeposited || 0) + " $";
+        document.getElementById("dashBalance").textContent = Number(fresh.balance || 0) + " $";
+      } else {
+        loginEl.style.display = "block";
+        dashEl.style.display = "none";
+        document.getElementById("payPanel").style.display = "none";
+        showDepositMsg("");
+        showWithdrawMsg("");
       }
+    }
 
-      if (req.url === "/api/deposit") {
-        addBalance(data.nick, data.amount);
-      } else if (req.url === "/api/save-user") {
-        upsertUser(data.nick, data.balance, data.totalDeposited);
-      } else if (req.url === "/api/delete-user") {
-        deleteUser(data.key);
-      } else if (req.url === "/api/simulate-send") {
-        simulateSend(data.nick, data.amount, Boolean(data.instant));
-      } else if (req.url === "/api/approve") {
-        const item = db.pending[String(data.key || "").toLowerCase()];
-        if (item) addBalance(item.nick, item.amount);
-      } else if (req.url === "/api/done-withdraw") {
-        const w = db.withdraws.find(x => x.id === data.id);
-        if (w) {
-          w.status = "WYPLACONO";
-          saveDb();
-        }
-      } else if (req.url === "/api/interest") {
-        Object.values(db.users).forEach(u => {
-          if (u.balance > 0) u.balance = Math.floor(u.balance * 1.1);
-        });
-        saveDb();
-      }
+    function setTab(tabName) {
+      document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.tab === tabName);
+      });
+      document.querySelectorAll(".tab-pane").forEach(pane => {
+        pane.classList.toggle("active", pane.id === "pane-" + tabName);
+      });
+      renderAll(latestState);
+    }
 
-      return sendJson(res, 200, { ok: true });
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => setTab(btn.dataset.tab));
     });
-  }
 
-  res.writeHead(404);
-  res.end("Not found");
-});
+    async function postJson(url, payload) {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.ok && data.ok !== false, status: res.status, data };
+      } catch (_) {
+        return { ok: false, status: 0, data: { error: "Brak połączenia z serwerem (odśwież za chwilę)." } };
+      }
+    }
 
-server.listen(PORT, () => {
-  console.log("Bank Nezzi dziala na porcie", PORT);
-});
-          
+    async function loadState() {
+      try {
+        const res = await fetch("/api/state");
+        if (!res.ok) return;
+        latestState = await res.json();
+        renderAll(latestState);
+      } catch (_) {}
+    }
+
+    function renderRanking(targetId, items, valueLabelFn) {
+      const el = document.getElementById(targetId);
+      el.innerHTML = "";
+      if (!items.length) {
+        el.innerHTML = '<div class="muted">Brak danych.</div>';
+        return;
+      }
+      items.slice(0, 10).forEach((u, idx) => {
+        const row = document.createElement("div");
+        row.className = "row-item";
+        const left = document.createElement("span");
+        const rank = document.createElement("b");
+        rank.textContent = "#" + (idx + 1) + " ";
+        const name = document.createElement("span");
+        name.textContent = u.nick;
+        left.append(rank, name);
+
+        const right = document.createElement("span");
+        right.style.color = "#4ade80";
+        right.style.fontWeight = "700";
+        right.textContent = valueLabelFn(u);
+
+        row.append(left, right);
+        el.appendChild(row);
+      });
+    }
+
+    function renderAll(data) {
+      const users = Object.values(data.users || {});
+      const depositors = users
+        .filter(u => u.totalDeposited > 0)
+        .sort((a, b) => b.totalDeposited - a.totalDeposited);
+
+      const listEl = document.getElementById("depositorsList");
+      listEl.innerHTML = "";
+      if (!depositors.length) {
+        listEl.innerHTML = '<div class="muted">Brak wpłat.</div>';
+      } else {
+        depositors.forEach((u, idx) => {
+          const item = document.createElement("div");
+          item.className = "row-item";
+          const left = document.createElement("span");
+          left.innerHTML = "#" + (idx + 1) + " <b></b>";
+          left.querySelector("b").textContent = u.nick;
+          const right = document.createElement("span");
+          right.style.color = "#4ade80";
+          right.style.fontWeight = "700";
+          right.textContent = "Wpłacono: " + u.totalDeposited + " $ • Saldo: " + u.balance + " $";
+          item.append(left, right);
+          listEl.appendChild(item);
+        });
+      }
+
+      const topBalance = [...users].sort((a, b) => b.balance - a.balance);
+      const topDeposit = [...users].sort((a, b) => b.totalDeposited - a.totalDeposited);
+      renderRanking("topBalanceList", topBalance, u => u.balance + " $");
+      renderRanking("topDepositList", topDeposit, u => u.totalDeposited + " $");
+
+      updateAuthScreens();
+
+      if (adminPass) {
+        renderAdmin(data);
+      }
+    }
+
+    function renderAdmin(data) {
+      const pendingEl = document.getElementById("pendingList");
+      pendingEl.innerHTML = "";
+      Object.entries(data.pending || {}).forEach(([key, p]) => {
+        const row = document.createElement("div");
+        row.className = "row-item";
+        const span = document.createElement("span");
+        span.textContent = p.nick + " — " + p.amount + " $";
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "green";
+        btn.textContent = "Zatwierdź";
+        btn.onclick = async () => {
+          await postJson("/api/approve", { key, pass: adminPass });
+          loadState();
+        };
+        row.append(span, btn);
+        pendingEl.appendChild(row);
+      });
+
+      const withdrawEl = document.getElementById("withdrawList");
+      withdrawEl.innerHTML = "";
+      (data.withdraws || []).filter(w => w.status === "OCZEKUJE").forEach(w => {
+        const row = document.createElement("div");
+        row.className = "row-item";
+        const span = document.createElement("span");
+        span.textContent = "/pay " + w.nick + " " + w.amount;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "amber";
+        btn.textContent = "Wypłacono";
+        btn.onclick = async () => {
+          await postJson("/api/done-withdraw", { id: w.id, pass: adminPass });
+          loadState();
+        };
+        row.append(span, btn);
+        withdrawEl.appendChild(row);
+      });
+
+      const usersEl = document.getElementById("usersList");
+      usersEl.innerHTML = "";
+      Object.entries(data.users || {}).forEach(([key, u]) => {
+        const row = document.createElement("div");
+        row.className = "row-item";
+
+        const span = document.createElement("span");
+        span.textContent = u.nick + " • wpłaty: " + u.totalDeposited + " $ • saldo: " + u.balance + " $";
+
+        const actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.gap = "8px";
+
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "blue";
+        editBtn.textContent = "Edytuj";
+        editBtn.onclick = () => {
+          document.getElementById("editNick").value = u.nick;
+          document.getElementById("editBalance").value = u.balance;
+          document.getElementById("editDeposited").value = u.totalDeposited;
+        };
+
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "red";
+        delBtn.textContent = "Usuń";
+        delBtn.onclick = async () => {
+          await postJson("/api/delete-user", { key, pass: adminPass });
+          loadState();
+        };
+
+        actions.append(editBtn, delBtn);
+        row.append(span, actions);
+        usersEl.appendChild(row);
+      });
+    }
+
+    async function handleAuth(mode) {
+      const nick = document.getElementById("loginNick").value.trim();
+      const password = document.getElementById("loginPassword").value;
+      showAuthMsg("");
+
+      if (!nick) {
+        return showAuthMsg("Wpisz swój nick z Minecrafta.");
+      }
+      if (!password) {
+        return showAuthMsg("Wpisz hasło.");
+      }
+
+      const res = await postJson("/api/auth", { nick, password, mode });
+      if (!res.ok || !res.data.user) {
+        return showAuthMsg(res.data.error || "Błąd logowania lub rejestracji.");
+      }
+
+      sessionUser = { nick: res.data.user.nick, password };
+      document.getElementById("loginPassword").value = "";
+      showAuthMsg("");
+      await loadState();
+    }
+
+    document.getElementById("btnLoginAction").addEventListener("click", () => handleAuth("login"));
+    document.getElementById("btnRegisterAction").addEventListener("click", () => handleAuth("register"));
+
+    document.getElementById("btnLogout").addEventListener("click", () => {
+      sessionUser = null;
+      document.getElementById("loginNick").value = "";
+      document.getElementById("loginPassword").value = "";
+      showAuthMsg("");
+      updateAuthScreens();
+    });
+
+    document.getElementById("btnGenPay").addEventListener("click", async () => {
+      if (!sessionUser) return;
+      
