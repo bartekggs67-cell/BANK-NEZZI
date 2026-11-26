@@ -259,13 +259,16 @@ const server = http.createServer((req, res) => {
 
       if (req.url === "/api/pending") {
         const nick = String(data.nick || "").trim();
+        const amount = Math.floor(Number(data.amount) || 0);
         if (!nick) {
-          return sendJson(res, 400, { error: "Brak nicku" });
+          return sendJson(res, 400, { ok: false, error: "Brak nicku" });
         }
-        const amount = Math.floor(Math.random() * 400) + 101;
+        if (amount <= 0) {
+          return sendJson(res, 400, { ok: false, error: "Wpisz kwotę większą od 0." });
+        }
         db.pending[nick.toLowerCase()] = { nick, amount };
         saveDb();
-        return sendJson(res, 200, { amount });
+        return sendJson(res, 200, { ok: true, amount });
       }
 
       if (req.url === "/api/withdraw") {
