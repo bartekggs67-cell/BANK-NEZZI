@@ -122,7 +122,7 @@
           <h1>Bank <span style="color:#38bdf8">Nezzi</span></h1>
           <div class="muted">Wpłaty w grze na konto: <b>NezziBG</b> • Lokata: <b style="color:#4ade80">+10%</b></div>
         </div>
-        <span class="badge">Weryfikacja /pay 1–1000 $</span>
+        <span class="badge">Konto gracza</span>
       </div>
       <div class="tabs">
         <button type="button" class="tab-btn active" data-tab="konto">Moje konto</button>
@@ -136,7 +136,7 @@
       <div class="card" id="loginScreen">
         <h2>Konto gracza</h2>
         <div class="muted">
-          Wpisz swój nick z Minecrafta oraz hasło, a następnie kliknij <b>Zaloguj</b> lub <b>Zarejestruj się</b>. Zarówno logowanie, jak i rejestracja wymagają potwierdzenia komendą <b>/pay NezziBG</b> (kwota od 1 do 1000 $).
+          Wpisz swój nick z Minecrafta oraz hasło, a następnie kliknij <b>Zaloguj</b> lub <b>Zarejestruj się</b>.
         </div>
 
         <div class="row">
@@ -154,7 +154,7 @@
             Potwierdź tożsamość w grze
           </div>
           <div class="muted">
-            Wyślij w grze poniższą komendę (kwota wylosowana z zakresu 1–1000 $), a po zatwierdzeniu przez administratora wejdziesz automatycznie na konto:
+            Wyślij w grze poniższą komendę, a po zatwierdzeniu przez administratora wejdziesz automatycznie na konto:
           </div>
           <div style="margin-top:10px;">
             <span class="cmd" id="verifyCommand"></span>
@@ -193,8 +193,10 @@
           </div>
 
           <div class="row" style="margin-top:16px;">
+            <input id="depositAmountInput" type="number" min="1" placeholder="Wpisz kwotę wpłaty ($)" style="width:200px;" />
             <button type="button" class="blue" id="btnGenPay">Wpłać — generuj /pay</button>
           </div>
+          <div id="depositMsg" style="display:none;"></div>
           <div class="panel" id="payPanel"></div>
         </div>
 
@@ -267,7 +269,7 @@
             </div>
           </div>
 
-          <h3 style="margin-top:14px;">Weryfikacje logowania / rejestracji (/pay 1–1000 $)</h3>
+          <h3 style="margin-top:14px;">Weryfikacje logowania / rejestracji</h3>
           <div id="authVerifyList" class="muted">Brak oczekujących weryfikacji.</div>
 
           <h3 style="margin-top:14px;">Oczekujące wpłaty</h3>
@@ -284,13 +286,25 @@
   </div>
 
   <script>
-    let sessionUser = null; // { nick, password }
-    let pendingAuth = null; // { nick, password, token, amount, mode }
+    let sessionUser = null;
+    let pendingAuth = null;
     let adminPass = "";
     let latestState = { users: {}, pending: {}, withdraws: [], authVerifications: {} };
 
     function showAuthMsg(msg, isOk) {
       const el = document.getElementById("authMessage");
+      if (!msg) {
+        el.style.display = "none";
+        el.textContent = "";
+        return;
+      }
+      el.style.display = "block";
+      el.className = isOk ? "msg-ok" : "msg-err";
+      el.textContent = msg;
+    }
+
+    function showDepositMsg(msg, isOk) {
+      const el = document.getElementById("depositMsg");
       if (!msg) {
         el.style.display = "none";
         el.textContent = "";
@@ -334,6 +348,7 @@
         loginEl.style.display = "block";
         dashEl.style.display = "none";
         document.getElementById("payPanel").style.display = "none";
+        showDepositMsg("");
         showWithdrawMsg("");
 
         if (pendingAuth) {
@@ -516,186 +531,4 @@
           loadState();
         };
         row.append(span, btn);
-        pendingEl.appendChild(row);
-      });
-
-      const withdrawEl = document.getElementById("withdrawList");
-      withdrawEl.innerHTML = "";
-      (data.withdraws || []).filter(w => w.status === "OCZEKUJE").forEach(w => {
-        const row = document.createElement("div");
-        row.className = "row-item";
-        const span = document.createElement("span");
-        span.textContent = "/pay " + w.nick + " " + w.amount;
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "amber";
-        btn.textContent = "Wypłacono";
-        btn.onclick = async () => {
-          await postJson("/api/done-withdraw", { id: w.id, pass: adminPass });
-          loadState();
-        };
-        row.append(span, btn);
-        withdrawEl.appendChild(row);
-      });
-
-      const usersEl = document.getElementById("usersList");
-      usersEl.innerHTML = "";
-      Object.entries(data.users || {}).forEach(([key, u]) => {
-        const row = document.createElement("div");
-        row.className = "row-item";
-
-        const span = document.createElement("span");
-        span.textContent = u.nick + " • wpłaty: " + u.totalDeposited + " $ • saldo: " + u.balance + " $";
-
-        const actions = document.createElement("div");
-        actions.style.display = "flex";
-        actions.style.gap = "8px";
-
-        const editBtn = document.createElement("button");
-        editBtn.type = "button";
-        editBtn.className = "blue";
-        editBtn.textContent = "Edytuj";
-        editBtn.onclick = () => {
-          document.getElementById("editNick").value = u.nick;
-          document.getElementById("editBalance").value = u.balance;
-          document.getElementById("editDeposited").value = u.totalDeposited;
-        };
-
-        const delBtn = document.createElement("button");
-        delBtn.type = "button";
-        delBtn.className = "red";
-        delBtn.textContent = "Usuń";
-        delBtn.onclick = async () => {
-          await postJson("/api/delete-user", { key, pass: adminPass });
-          loadState();
-        };
-
-        actions.append(editBtn, delBtn);
-        row.append(span, actions);
-        usersEl.appendChild(row);
-      });
-    }
-
-    async function handleAuthStart(mode) {
-      const nick = document.getElementById("loginNick").value.trim();
-      const password = document.getElementById("loginPassword").value;
-      showAuthMsg("");
-
-      if (!nick) {
-        return showAuthMsg("Wpisz swój nick z Minecrafta.");
-      }
-      if (!password) {
-        return showAuthMsg("Wpisz hasło.");
-      }
-
-      const { data } = await postJson("/api/auth-start", { nick, password, mode });
-      if (!data.ok) {
-        return showAuthMsg(data.error || "Błąd logowania lub rejestracji.");
-      }
-
-      pendingAuth = {
-        nick: data.nick,
-        password,
-        token: data.token,
-        amount: data.amount,
-        mode: data.mode
-      };
-      updateAuthScreens();
-      showAuthMsg("Wyślij komendę /pay NezziBG " + data.amount + " w grze i poczekaj na zatwierdzenie.", true);
-    }
-
-    document.getElementById("btnLoginAction").addEventListener("click", () => handleAuthStart("login"));
-    document.getElementById("btnRegisterAction").addEventListener("click", () => handleAuthStart("register"));
-
-    document.getElementById("btnCheckVerify").addEventListener("click", async () => {
-      if (!pendingAuth) return;
-      await checkPendingVerification();
-      if (pendingAuth && !sessionUser) {
-        showAuthMsg("Jeszcze nie potwierdzono przelewu /pay NezziBG " + pendingAuth.amount + ".");
-      }
-    });
-
-    document.getElementById("btnCancelVerify").addEventListener("click", () => {
-      pendingAuth = null;
-      showAuthMsg("");
-      updateAuthScreens();
-    });
-
-    document.getElementById("btnLogout").addEventListener("click", () => {
-      sessionUser = null;
-      pendingAuth = null;
-      document.getElementById("loginNick").value = "";
-      document.getElementById("loginPassword").value = "";
-      showAuthMsg("");
-      updateAuthScreens();
-    });
-
-    document.getElementById("btnGenPay").addEventListener("click", async () => {
-      if (!sessionUser) return;
-      const { data } = await postJson("/api/pending", { nick: sessionUser.nick });
-      const panel = document.getElementById("payPanel");
-      panel.style.display = "block";
-      panel.innerHTML = 'Wyślij w grze na konto <b>NezziBG</b>: <span class="cmd"></span>';
-      panel.querySelector(".cmd").textContent = "/pay NezziBG " + data.amount;
-    });
-
-    document.getElementById("btnWithdraw").addEventListener("click", async () => {
-      if (!sessionUser) return;
-      const amount = Number(document.getElementById("withdrawInput").value);
-      showWithdrawMsg("");
-      if (!amount || amount <= 0) {
-        return showWithdrawMsg("Wpisz poprawną kwotę wypłaty.");
-      }
-      const { data } = await postJson("/api/withdraw", {
-        nick: sessionUser.nick,
-        password: sessionUser.password,
-        amount
-      });
-      if (!data.ok) {
-        return showWithdrawMsg(data.error || "Nie udało się zlecić wypłaty.");
-      }
-      document.getElementById("withdrawInput").value = "";
-      showWithdrawMsg("Wniosek o wypłatę " + amount + " $ został wysłany.", true);
-      await loadState();
-    });
-
-    document.getElementById("btnAdminLogin").addEventListener("click", () => {
-      const pass = document.getElementById("adminPassInput").value;
-      if (pass !== "7532252") return alert("Złe hasło");
-      adminPass = pass;
-      document.getElementById("adminLogin").style.display = "none";
-      document.getElementById("adminContent").style.display = "block";
-      loadState();
-    });
-
-    document.getElementById("btnInterest").addEventListener("click", async () => {
-      await postJson("/api/interest", { pass: adminPass });
-      loadState();
-    });
-
-    document.getElementById("btnSaveUser").addEventListener("click", async () => {
-      const nick = document.getElementById("editNick").value.trim();
-      if (!nick) return alert("Podaj nick gracza.");
-      const balance = Number(document.getElementById("editBalance").value || 0);
-      const totalDeposited = Number(document.getElementById("editDeposited").value || 0);
-      await postJson("/api/save-user", { nick, balance, totalDeposited, pass: adminPass });
-      loadState();
-    });
-
-    async function runSim(instant) {
-      const nick = document.getElementById("simNick").value.trim();
-      const amount = Number(document.getElementById("simAmount").value);
-      if (!nick || !amount || amount <= 0) return alert("Podaj nick i kwotę.");
-      await postJson("/api/simulate-send", { nick, amount, instant, pass: adminPass });
-      document.getElementById("simAmount").value = "";
-      loadState();
-    }
-
-    document.getElementById("btnSimPending").addEventListener("click", () => runSim(false));
-    document.getElementById("btnSimInstant").addEventListener("click", () => runSim(true));
-
-    loadState();
-    setInterval(loadState, 2500);
-  </script>
-</body>
-</html>
+        pendingEl.appendChild
