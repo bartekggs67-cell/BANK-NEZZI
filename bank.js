@@ -36,6 +36,43 @@ function addBalance(nick, amount) {
   saveDb();
 }
 
+function upsertUser(nick, balance, totalDeposited) {
+  const cleanNick = String(nick || "").trim();
+  const key = cleanNick.toLowerCase();
+  if (!key) return;
+
+  const bal = Math.max(0, Math.floor(Number(balance) || 0));
+  const dep = Math.max(0, Math.floor(Number(totalDeposited) || 0));
+  db.users[key] = {
+    nick: cleanNick,
+    balance: bal,
+    totalDeposited: dep
+  };
+  saveDb();
+}
+
+function deleteUser(key) {
+  const k = String(key || "").trim().toLowerCase();
+  if (!k || !db.users[k]) return;
+  delete db.users[k];
+  delete db.pending[k];
+  saveDb();
+}
+
+function simulateSend(nick, amount, instantCredit) {
+  const cleanNick = String(nick || "").trim();
+  const key = cleanNick.toLowerCase();
+  const value = Math.floor(Number(amount) || 0);
+  if (!key || value <= 0) return;
+
+  if (instantCredit) {
+    addBalance(cleanNick, value);
+  } else {
+    db.pending[key] = { nick: cleanNick, amount: value };
+    saveDb();
+  }
+}
+
 function readBody(req, cb) {
   let body = "";
   req.on("data", chunk => {
@@ -102,6 +139,12 @@ const server = http.createServer((req, res) => {
 
       if (req.url === "/api/deposit") {
         addBalance(data.nick, data.amount);
+      } else if (req.url === "/api/save-user") {
+        upsertUser(data.nick, data.balance, data.totalDeposited);
+      } else if (req.url === "/api/delete-user") {
+        deleteUser(data.key);
+      } else if (req.url === "/api/simulate-send") {
+        simulateSend(data.nick, data.amount, Boolean(data.instant));
       } else if (req.url === "/api/approve") {
         const item = db.pending[String(data.key || "").toLowerCase()];
         if (item) addBalance(item.nick, item.amount);
