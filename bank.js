@@ -1,14 +1,13 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
-const crypto = require("crypto");
 
 const PORT = process.env.PORT || 3000;
 const PASS = "7532252";
 const DATA_FILE = path.join(__dirname, "data.json");
 const HTML_FILE = path.join(__dirname, "index.html");
 
-let db = { users: {}, pending: {}, withdraws: [], authVerifications: {} };
+let db = { users: {}, pending: {}, withdraws: [] };
 
 if (fs.existsSync(DATA_FILE)) {
   try {
@@ -16,8 +15,7 @@ if (fs.existsSync(DATA_FILE)) {
     db = {
       users: parsed.users || {},
       pending: parsed.pending || {},
-      withdraws: parsed.withdraws || [],
-      authVerifications: parsed.authVerifications || {}
+      withdraws: parsed.withdraws || []
     };
   } catch (_) {}
 }
@@ -28,8 +26,14 @@ function saveDb() {
   } catch (_) {}
 }
 
-function hashPassword(plain) {
-  return crypto.createHash("sha256").update(String(plain)).digest("hex");
+function simpleHash(str) {
+  let h = 2166136261;
+  const s = String(str || "");
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
 }
 
 function ensureUser(nick) {
@@ -82,7 +86,6 @@ function deleteUser(key) {
   if (!k) return;
   delete db.users[k];
   delete db.pending[k];
-  delete db.authVerifications[k];
   saveDb();
 }
 
@@ -110,21 +113,10 @@ function getPublicState() {
       hasPassword: Boolean(u.passwordHash)
     };
   }
-  const safeAuth = {};
-  for (const [k, v] of Object.entries(db.authVerifications || {})) {
-    safeAuth[k] = {
-      nick: v.nick,
-      mode: v.mode,
-      amount: v.amount,
-      approved: Boolean(v.approved),
-      createdAt: v.createdAt || 0
-    };
-  }
   return {
     users: safeUsers,
     pending: db.pending || {},
-    withdraws: db.withdraws || [],
-    authVerifications: safeAuth
+    withdraws: db.withdraws || []
   };
 }
 
@@ -150,6 +142,10 @@ function sendJson(res, code, obj) {
 
 const server = http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/") {
+    if (!fs.existsSync(HTML_FILE)) {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      return res.end("<h1>Bank Nezzi</h1><p>Brak pliku index.html w repozytorium.</p>");
+    }
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     return fs.createReadStream(HTML_FILE).pipe(res);
   }
@@ -160,7 +156,7 @@ const server = http.createServer((req, res) => {
 
   if (req.method === "POST") {
     return readBody(req, data => {
-      if (req.url === "/api/auth-start") {
+      if (req.url === "/api/auth") {
         const cleanNick = String(data.nick || "").trim();
         const key = cleanNick.toLowerCase();
         const password = String(data.password || "");
@@ -174,85 +170,48 @@ const server = http.createServer((req, res) => {
         }
 
         const existing = db.users[key];
+        const hashed = simpleHash(password);
 
         if (mode === "register") {
           if (existing && existing.passwordHash) {
             return sendJson(res, 400, {
               ok: false,
-              error: "Ten nick ma już konto — użyj przycisku Zaloguj."
+              error: "Ten nick ma już konto — kliknij Zaloguj."
             });
           }
-        } else {
-          if (!existing || !existing.passwordHash) {
-            return sendJson(res, 400, {
-              ok: false,
-              error: "Brak konta dla tego nicku — kliknij Zarejestruj się."
-            });
-          }
-          if (hashPassword(password) !== existing.passwordHash) {
-            return sendJson(res, 401, {
-              ok: false,
-              error: "Nieprawidłowe hasło do tego konta."
-            });
-          }
-        }
-
-        const amount = Math.floor(Math.random() * 1000) + 1;
-        const token = crypto.randomBytes(12).toString("hex");
-        db.authVerifications[key] = {
-          nick: existing ? existing.nick : cleanNick,
-          mode,
-          passwordHash: hashPassword(password),
-          amount,
-          token,
-          approved: false,
-          createdAt: Date.now()
-        };
-        saveDb();
-
-        return sendJson(res, 200, {
-          ok: true,
-          nick: db.authVerifications[key].nick,
-          amount,
-          token,
-          mode
-        });
-      }
-
-      if (req.url === "/api/auth-complete") {
-        const cleanNick = String(data.nick || "").trim();
-        const key = cleanNick.toLowerCase();
-        const token = String(data.token || "");
-        const entry = db.authVerifications[key];
-
-        if (!entry || entry.token !== token) {
-          return sendJson(res, 400, {
-            ok: false,
-            error: "Sesja weryfikacji wygasła. Spróbuj ponownie."
-          });
-        }
-
-        if (!entry.approved) {
+          const user = ensureUser(cleanNick);
+          user.passwordHash = hashed;
+          saveDb();
           return sendJson(res, 200, {
             ok: true,
-            approved: false
+            user: {
+              nick: user.nick,
+              balance: user.balance,
+              totalDeposited: user.totalDeposited
+            }
           });
         }
 
-        const user = ensureUser(entry.nick);
-        if (entry.mode === "register") {
-          user.passwordHash = entry.passwordHash;
+        if (!existing || !existing.passwordHash) {
+          return sendJson(res, 400, {
+            ok: false,
+            error: "Nie ma jeszcze konta na ten nick — kliknij Zarejestruj się."
+          });
         }
-        delete db.authVerifications[key];
-        saveDb();
+
+        if (existing.passwordHash !== hashed) {
+          return sendJson(res, 401, {
+            ok: false,
+            error: "Złe hasło."
+          });
+        }
 
         return sendJson(res, 200, {
           ok: true,
-          approved: true,
           user: {
-            nick: user.nick,
-            balance: user.balance,
-            totalDeposited: user.totalDeposited
+            nick: existing.nick,
+            balance: existing.balance,
+            totalDeposited: existing.totalDeposited
           }
         });
       }
@@ -277,7 +236,7 @@ const server = http.createServer((req, res) => {
         const amount = Math.floor(Number(data.amount) || 0);
         const user = db.users[key];
 
-        if (!user || !user.passwordHash || hashPassword(password) !== user.passwordHash) {
+        if (!user || !user.passwordHash || user.passwordHash !== simpleHash(password)) {
           return sendJson(res, 401, { ok: false, error: "Zaloguj się ponownie." });
         }
         if (amount <= 0 || user.balance < amount) {
@@ -306,13 +265,7 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 403, { error: "Brak dostepu" });
       }
 
-      if (req.url === "/api/approve-auth") {
-        const key = String(data.key || "").trim().toLowerCase();
-        if (db.authVerifications[key]) {
-          db.authVerifications[key].approved = true;
-          saveDb();
-        }
-      } else if (req.url === "/api/deposit") {
+      if (req.url === "/api/deposit") {
         addBalance(data.nick, data.amount);
       } else if (req.url === "/api/save-user") {
         upsertUser(data.nick, data.balance, data.totalDeposited);
@@ -347,3 +300,4 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log("Bank Nezzi dziala na porcie", PORT);
 });
+      
