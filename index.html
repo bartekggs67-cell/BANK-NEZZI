@@ -78,14 +78,6 @@
       background: #0b1020;
       border: 1px solid #24304b;
     }
-    .verify-box {
-      display: none;
-      margin-top: 14px;
-      padding: 16px;
-      border-radius: 12px;
-      background: #0b1020;
-      border: 1px solid #38bdf8;
-    }
     .cmd { color: #4ade80; font-family: monospace; font-weight: 700; font-size: 16px; }
     .msg-err { color: #f87171; font-size: 13px; margin-top: 10px; font-weight: 600; }
     .msg-ok { color: #4ade80; font-size: 13px; margin-top: 10px; font-weight: 600; }
@@ -132,7 +124,6 @@
     </div>
 
     <div id="pane-konto" class="tab-pane active">
-      <!-- EKRAN LOGOWANIA / REJESTRACJI -->
       <div class="card" id="loginScreen">
         <h2>Konto gracza</h2>
         <div class="muted">
@@ -149,26 +140,9 @@
           <button type="button" class="green" id="btnRegisterAction">Zarejestruj się</button>
         </div>
 
-        <div class="verify-box" id="verifyBox">
-          <div style="font-weight:700; color:#38bdf8; margin-bottom:6px;" id="verifyTitle">
-            Potwierdź tożsamość w grze
-          </div>
-          <div class="muted">
-            Wyślij w grze poniższą komendę, a po zatwierdzeniu przez administratora wejdziesz automatycznie na konto:
-          </div>
-          <div style="margin-top:10px;">
-            <span class="cmd" id="verifyCommand"></span>
-          </div>
-          <div class="row">
-            <button type="button" class="green" id="btnCheckVerify">Sprawdź potwierdzenie</button>
-            <button type="button" class="dark" id="btnCancelVerify">Anuluj</button>
-          </div>
-        </div>
-
         <div id="authMessage" class="msg-err" style="display:none;"></div>
       </div>
 
-      <!-- ZMIENIONY EKRAN PO ZALOGOWANIU -->
       <div id="loggedInScreen" style="display:none;">
         <div class="card">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
@@ -269,9 +243,6 @@
             </div>
           </div>
 
-          <h3 style="margin-top:14px;">Weryfikacje logowania / rejestracji</h3>
-          <div id="authVerifyList" class="muted">Brak oczekujących weryfikacji.</div>
-
           <h3 style="margin-top:14px;">Oczekujące wpłaty</h3>
           <div id="pendingList"></div>
 
@@ -287,9 +258,8 @@
 
   <script>
     let sessionUser = null;
-    let pendingAuth = null;
     let adminPass = "";
-    let latestState = { users: {}, pending: {}, withdraws: [], authVerifications: {} };
+    let latestState = { users: {}, pending: {}, withdraws: [] };
 
     function showAuthMsg(msg, isOk) {
       const el = document.getElementById("authMessage");
@@ -330,7 +300,6 @@
     function updateAuthScreens() {
       const loginEl = document.getElementById("loginScreen");
       const dashEl = document.getElementById("loggedInScreen");
-      const verifyBox = document.getElementById("verifyBox");
 
       if (sessionUser) {
         loginEl.style.display = "none";
@@ -350,18 +319,6 @@
         document.getElementById("payPanel").style.display = "none";
         showDepositMsg("");
         showWithdrawMsg("");
-
-        if (pendingAuth) {
-          verifyBox.style.display = "block";
-          document.getElementById("verifyTitle").textContent =
-            pendingAuth.mode === "register"
-              ? "Potwierdź rejestrację dla " + pendingAuth.nick
-              : "Potwierdź logowanie dla " + pendingAuth.nick;
-          document.getElementById("verifyCommand").textContent =
-            "/pay NezziBG " + pendingAuth.amount;
-        } else {
-          verifyBox.style.display = "none";
-        }
       }
     }
 
@@ -380,33 +337,16 @@
     });
 
     async function postJson(url, payload) {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json().catch(() => ({}));
-      return { status: res.status, data };
-    }
-
-    async function checkPendingVerification() {
-      if (!pendingAuth || sessionUser) return;
-      const { data } = await postJson("/api/auth-complete", {
-        nick: pendingAuth.nick,
-        token: pendingAuth.token
-      });
-      if (!data.ok) {
-        pendingAuth = null;
-        updateAuthScreens();
-        showAuthMsg(data.error || "Błąd weryfikacji.");
-        return;
-      }
-      if (data.approved && data.user) {
-        sessionUser = { nick: data.user.nick, password: pendingAuth.password };
-        pendingAuth = null;
-        document.getElementById("loginPassword").value = "";
-        showAuthMsg("");
-        await loadState();
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        return { ok: res.ok && data.ok !== false, status: res.status, data };
+      } catch (_) {
+        return { ok: false, status: 0, data: { error: "Brak połączenia z serwerem (odśwież za chwilę)." } };
       }
     }
 
@@ -415,9 +355,6 @@
         const res = await fetch("/api/state");
         if (!res.ok) return;
         latestState = await res.json();
-        if (pendingAuth && !sessionUser) {
-          await checkPendingVerification();
-        }
         renderAll(latestState);
       } catch (_) {}
     }
@@ -488,33 +425,6 @@
     }
 
     function renderAdmin(data) {
-      const authVerifyEl = document.getElementById("authVerifyList");
-      authVerifyEl.innerHTML = "";
-      const entries = Object.entries(data.authVerifications || {});
-      if (!entries.length) {
-        authVerifyEl.innerHTML = '<div class="muted">Brak oczekujących weryfikacji.</div>';
-      } else {
-        entries.forEach(([key, v]) => {
-          const row = document.createElement("div");
-          row.className = "row-item";
-          const label = v.mode === "register" ? "Rejestracja" : "Logowanie";
-          const span = document.createElement("span");
-          span.textContent = label + ": " + v.nick + " — /pay NezziBG " + v.amount + " $";
-
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = v.approved ? "dark" : "green";
-          btn.textContent = v.approved ? "Potwierdzono" : "Potwierdź /pay";
-          btn.disabled = Boolean(v.approved);
-          btn.onclick = async () => {
-            await postJson("/api/approve-auth", { key, pass: adminPass });
-            loadState();
-          };
-          row.append(span, btn);
-          authVerifyEl.appendChild(row);
-        });
-      }
-
       const pendingEl = document.getElementById("pendingList");
       pendingEl.innerHTML = "";
       Object.entries(data.pending || {}).forEach(([key, p]) => {
@@ -531,4 +441,100 @@
           loadState();
         };
         row.append(span, btn);
-        pendingEl.appendChild
+        pendingEl.appendChild(row);
+      });
+
+      const withdrawEl = document.getElementById("withdrawList");
+      withdrawEl.innerHTML = "";
+      (data.withdraws || []).filter(w => w.status === "OCZEKUJE").forEach(w => {
+        const row = document.createElement("div");
+        row.className = "row-item";
+        const span = document.createElement("span");
+        span.textContent = "/pay " + w.nick + " " + w.amount;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "amber";
+        btn.textContent = "Wypłacono";
+        btn.onclick = async () => {
+          await postJson("/api/done-withdraw", { id: w.id, pass: adminPass });
+          loadState();
+        };
+        row.append(span, btn);
+        withdrawEl.appendChild(row);
+      });
+
+      const usersEl = document.getElementById("usersList");
+      usersEl.innerHTML = "";
+      Object.entries(data.users || {}).forEach(([key, u]) => {
+        const row = document.createElement("div");
+        row.className = "row-item";
+
+        const span = document.createElement("span");
+        span.textContent = u.nick + " • wpłaty: " + u.totalDeposited + " $ • saldo: " + u.balance + " $";
+
+        const actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.gap = "8px";
+
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "blue";
+        editBtn.textContent = "Edytuj";
+        editBtn.onclick = () => {
+          document.getElementById("editNick").value = u.nick;
+          document.getElementById("editBalance").value = u.balance;
+          document.getElementById("editDeposited").value = u.totalDeposited;
+        };
+
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "red";
+        delBtn.textContent = "Usuń";
+        delBtn.onclick = async () => {
+          await postJson("/api/delete-user", { key, pass: adminPass });
+          loadState();
+        };
+
+        actions.append(editBtn, delBtn);
+        row.append(span, actions);
+        usersEl.appendChild(row);
+      });
+    }
+
+    async function handleAuth(mode) {
+      const nick = document.getElementById("loginNick").value.trim();
+      const password = document.getElementById("loginPassword").value;
+      showAuthMsg("");
+
+      if (!nick) {
+        return showAuthMsg("Wpisz swój nick z Minecrafta.");
+      }
+      if (!password) {
+        return showAuthMsg("Wpisz hasło.");
+      }
+
+      const res = await postJson("/api/auth", { nick, password, mode });
+      if (!res.ok || !res.data.user) {
+        return showAuthMsg(res.data.error || "Błąd logowania lub rejestracji.");
+      }
+
+      sessionUser = { nick: res.data.user.nick, password };
+      document.getElementById("loginPassword").value = "";
+      showAuthMsg("");
+      await loadState();
+    }
+
+    document.getElementById("btnLoginAction").addEventListener("click", () => handleAuth("login"));
+    document.getElementById("btnRegisterAction").addEventListener("click", () => handleAuth("register"));
+
+    document.getElementById("btnLogout").addEventListener("click", () => {
+      sessionUser = null;
+      document.getElementById("loginNick").value = "";
+      document.getElementById("loginPassword").value = "";
+      showAuthMsg("");
+      updateAuthScreens();
+    });
+
+    document.getElementById("btnGenPay").addEventListener("click", async () => {
+      if (!sessionUser) return;
+    
