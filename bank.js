@@ -1,6 +1,7 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const PORT = process.env.PORT || 3000;
 const PASS = "7532252";
@@ -21,17 +22,36 @@ function saveDb() {
   } catch (_) {}
 }
 
+function hashPassword(plain) {
+  return crypto.createHash("sha256").update(String(plain)).digest("hex");
+}
+
+function ensureUser(nick) {
+  const cleanNick = String(nick || "").trim();
+  const key = cleanNick.toLowerCase();
+  if (!key) return null;
+  if (!db.users[key]) {
+    db.users[key] = {
+      nick: cleanNick,
+      balance: 0,
+      totalDeposited: 0,
+      passwordHash: ""
+    };
+  } else if (!db.users[key].nick) {
+    db.users[key].nick = cleanNick;
+  }
+  return db.users[key];
+}
+
 function addBalance(nick, amount) {
   const cleanNick = String(nick || "").trim();
   const key = cleanNick.toLowerCase();
   const value = Math.floor(Number(amount) || 0);
   if (!key || value <= 0) return;
 
-  if (!db.users[key]) {
-    db.users[key] = { nick: cleanNick, balance: 0, totalDeposited: 0 };
-  }
-  db.users[key].balance += value;
-  db.users[key].totalDeposited += value;
+  const user = ensureUser(cleanNick);
+  user.balance += value;
+  user.totalDeposited += value;
   delete db.pending[key];
   saveDb();
 }
@@ -41,12 +61,12 @@ function upsertUser(nick, balance, totalDeposited) {
   const key = cleanNick.toLowerCase();
   if (!key) return;
 
-  const bal = Math.max(0, Math.floor(Number(balance) || 0));
-  const dep = Math.max(0, Math.floor(Number(totalDeposited) || 0));
+  const existing = db.users[key];
   db.users[key] = {
     nick: cleanNick,
-    balance: bal,
-    totalDeposited: dep
+    balance: Math.max(0, Math.floor(Number(balance) || 0)),
+    totalDeposited: Math.max(0, Math.floor(Number(totalDeposited) || 0)),
+    passwordHash: existing ? existing.passwordHash || "" : ""
   };
   saveDb();
 }
@@ -73,6 +93,23 @@ function simulateSend(nick, amount, instantCredit) {
   }
 }
 
+function getPublicState() {
+  const safeUsers = {};
+  for (const [k, u] of Object.entries(db.users || {})) {
+    safeUsers[k] = {
+      nick: u.nick,
+      balance: Number(u.balance || 0),
+      totalDeposited: Number(u.totalDeposited || 0),
+      hasPassword: Boolean(u.passwordHash)
+    };
+  }
+  return {
+    users: safeUsers,
+    pending: db.pending || {},
+    withdraws: db.withdraws || []
+  };
+}
+
 function readBody(req, cb) {
   let body = "";
   req.on("data", chunk => {
@@ -88,6 +125,11 @@ function readBody(req, cb) {
   });
 }
 
+function sendJson(res, code, obj) {
+  res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(obj));
+}
+
 const server = http.createServer((req, res) => {
   if (req.method === "GET" && req.url === "/") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -95,46 +137,121 @@ const server = http.createServer((req, res) => {
   }
 
   if (req.method === "GET" && req.url === "/api/state") {
-    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-    return res.end(JSON.stringify(db));
+    return sendJson(res, 200, getPublicState());
   }
 
   if (req.method === "POST") {
     return readBody(req, data => {
+      if (req.url === "/api/auth") {
+        const cleanNick = String(data.nick || "").trim();
+        const key = cleanNick.toLowerCase();
+        const password = String(data.password || "");
+        const mode = String(data.mode || "check");
+
+        if (!cleanNick) {
+          return sendJson(res, 400, { ok: false, error: "Podaj nick z Minecrafta." });
+        }
+
+        const existing = db.users[key];
+
+        if (!existing || !existing.passwordHash) {
+          if (mode === "check") {
+            return sendJson(res, 200, {
+              ok: true,
+              needsSetup: true,
+              nick: cleanNick
+            });
+          }
+          if (password.length < 4) {
+            return sendJson(res, 400, {
+              ok: false,
+              needsSetup: true,
+              error: "Hasło musi mieć co najmniej 4 znaki."
+            });
+          }
+          const user = ensureUser(cleanNick);
+          user.passwordHash = hashPassword(password);
+          saveDb();
+          return sendJson(res, 200, {
+            ok: true,
+            user: {
+              nick: user.nick,
+              balance: user.balance,
+              totalDeposited: user.totalDeposited
+            }
+          });
+        }
+
+        if (mode === "check") {
+          return sendJson(res, 200, {
+            ok: true,
+            needsSetup: false,
+            nick: existing.nick
+          });
+        }
+
+        if (hashPassword(password) !== existing.passwordHash) {
+          return sendJson(res, 401, {
+            ok: false,
+            needsSetup: false,
+            error: "Nieprawidłowe hasło do tego konta."
+          });
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          user: {
+            nick: existing.nick,
+            balance: existing.balance,
+            totalDeposited: existing.totalDeposited
+          }
+        });
+      }
+
       if (req.url === "/api/pending") {
         const nick = String(data.nick || "").trim();
         if (!nick) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          return res.end(JSON.stringify({ error: "Brak nicku" }));
+          return sendJson(res, 400, { error: "Brak nicku" });
         }
         const amount = Math.floor(Math.random() * 400) + 101;
         db.pending[nick.toLowerCase()] = { nick, amount };
         saveDb();
-        res.writeHead(200, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ amount }));
+        return sendJson(res, 200, { amount });
       }
 
       if (req.url === "/api/withdraw") {
         const key = String(data.nick || "").trim().toLowerCase();
+        const password = String(data.password || "");
         const amount = Math.floor(Number(data.amount) || 0);
         const user = db.users[key];
-        if (user && amount > 0 && user.balance >= amount) {
-          user.balance -= amount;
-          db.withdraws.unshift({
-            id: Date.now(),
-            nick: user.nick,
-            amount,
-            status: "OCZEKUJE"
-          });
-          saveDb();
+
+        if (!user || !user.passwordHash || hashPassword(password) !== user.passwordHash) {
+          return sendJson(res, 401, { ok: false, error: "Zaloguj się ponownie." });
         }
-        res.writeHead(200, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ ok: true }));
+        if (amount <= 0 || user.balance < amount) {
+          return sendJson(res, 400, { ok: false, error: "Za małe saldo do wypłaty." });
+        }
+
+        user.balance -= amount;
+        db.withdraws.unshift({
+          id: Date.now(),
+          nick: user.nick,
+          amount,
+          status: "OCZEKUJE"
+        });
+        saveDb();
+        return sendJson(res, 200, {
+          ok: true,
+          user: {
+            nick: user.nick,
+            balance: user.balance,
+            totalDeposited: user.totalDeposited
+          }
+        });
       }
 
       if (data.pass !== PASS) {
-        res.writeHead(403, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "Brak dostepu" }));
+        return sendJson(res, 403, { error: "Brak dostepu" });
       }
 
       if (req.url === "/api/deposit") {
@@ -161,8 +278,7 @@ const server = http.createServer((req, res) => {
         saveDb();
       }
 
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
+      return sendJson(res, 200, { ok: true });
     });
   }
 
