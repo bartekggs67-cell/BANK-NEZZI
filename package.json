@@ -1,1 +1,11 @@
-
+{
+  "name": "bank-nezzi",
+  "version": "1.0.0",
+  "main": "bank.js",
+  "scripts": {
+    "start": "node bank.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
