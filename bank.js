@@ -15,8 +15,8 @@ let db = {
   lastDailyBonusAt: Date.now()
 };
 
-if (fs.existsSync(DATA_FILE)) {
-  try {
+try {
+  if (fs.existsSync(DATA_FILE)) {
     const parsed = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
     db = {
       users: parsed.users || {},
@@ -24,8 +24,8 @@ if (fs.existsSync(DATA_FILE)) {
       withdraws: parsed.withdraws || [],
       lastDailyBonusAt: Number(parsed.lastDailyBonusAt) || Date.now()
     };
-  } catch (_) {}
-}
+  }
+} catch (_) {}
 
 function saveDb() {
   try {
@@ -150,8 +150,7 @@ function getPublicState() {
     safeUsers[k] = {
       nick: u.nick,
       balance: Number(u.balance || 0),
-      totalDeposited: Number(u.totalDeposited || 0),
-      hasPassword: Boolean(u.passwordHash)
+      totalDeposited: Number(u.totalDeposited || 0)
     };
   }
   const nextBonusInMs = Math.max(0, DAY_MS - (Date.now() - (db.lastDailyBonusAt || Date.now())));
@@ -184,48 +183,118 @@ function sendJson(res, code, obj) {
 }
 
 const server = http.createServer((req, res) => {
-  check24hBonus();
+  try {
+    check24hBonus();
 
-  if (req.method === "GET" && req.url === "/") {
-    if (!fs.existsSync(HTML_FILE)) {
+    if (req.method === "GET" && req.url === "/") {
+      if (!fs.existsSync(HTML_FILE)) {
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        return res.end("<h1>Bank Nezzi</h1><p>Brak pliku index.html.</p>");
+      }
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      return res.end("<h1>Bank Nezzi</h1><p>Brak pliku index.html w repozytorium.</p>");
+      return fs.createReadStream(HTML_FILE).pipe(res);
     }
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    return fs.createReadStream(HTML_FILE).pipe(res);
-  }
 
-  if (req.method === "GET" && req.url === "/api/state") {
-    return sendJson(res, 200, getPublicState());
-  }
+    if (req.method === "GET" && req.url === "/api/state") {
+      return sendJson(res, 200, getPublicState());
+    }
 
-  if (req.method === "POST") {
-    return readBody(req, data => {
-      if (req.url === "/api/auth") {
-        const cleanNick = String(data.nick || "").trim();
-        const key = cleanNick.toLowerCase();
-        const password = String(data.password || "");
-        const mode = String(data.mode || "login");
+    if (req.method === "POST") {
+      return readBody(req, data => {
+        if (req.url === "/api/auth") {
+          const cleanNick = String(data.nick || "").trim();
+          const key = cleanNick.toLowerCase();
+          const password = String(data.password || "");
+          const mode = String(data.mode || "login");
 
-        if (!cleanNick) {
-          return sendJson(res, 400, { ok: false, error: "Podaj nick z Minecrafta." });
-        }
-        if (password.length < 4) {
-          return sendJson(res, 400, { ok: false, error: "Hasło musi mieć co najmniej 4 znaki." });
-        }
+          if (!cleanNick) {
+            return sendJson(res, 400, { ok: false, error: "Podaj nick z Minecrafta." });
+          }
+          if (password.length < 4) {
+            return sendJson(res, 400, { ok: false, error: "Hasło musi mieć co najmniej 4 znaki." });
+          }
 
-        const existing = db.users[key];
-        const hashed = simpleHash(password);
+          const existing = db.users[key];
+          const hashed = simpleHash(password);
 
-        if (mode === "register") {
-          if (existing && existing.passwordHash) {
-            return sendJson(res, 400, {
-              ok: false,
-              error: "Ten nick ma już konto — kliknij Zaloguj."
+          if (mode === "register") {
+            if (existing && existing.passwordHash) {
+              return sendJson(res, 400, {
+                ok: false,
+                error: "Ten nick ma już konto — kliknij Zaloguj."
+              });
+            }
+            const user = ensureUser(cleanNick);
+            user.passwordHash = hashed;
+            saveDb();
+            return sendJson(res, 200, {
+              ok: true,
+              user: {
+                nick: user.nick,
+                balance: user.balance,
+                totalDeposited: user.totalDeposited
+              }
             });
           }
-          const user = ensureUser(cleanNick);
-          user.passwordHash = hashed;
+
+          if (!existing || !existing.passwordHash) {
+            return sendJson(res, 400, {
+              ok: false,
+              error: "Brak konta dla tego nicku — kliknij Zarejestruj się."
+            });
+          }
+
+          if (existing.passwordHash !== hashed) {
+            return sendJson(res, 401, {
+              ok: false,
+              error: "Nieprawidłowe hasło."
+            });
+          }
+
+          return sendJson(res, 200, {
+            ok: true,
+            user: {
+              nick: existing.nick,
+              balance: existing.balance,
+              totalDeposited: existing.totalDeposited
+            }
+          });
+        }
+
+        if (req.url === "/api/pending") {
+          const nick = String(data.nick || "").trim();
+          const amount = Math.floor(Number(data.amount) || 0);
+          if (!nick) {
+            return sendJson(res, 400, { ok: false, error: "Brak nicku." });
+          }
+          if (amount <= 0) {
+            return sendJson(res, 400, { ok: false, error: "Wpisz kwotę większą od 0." });
+          }
+          db.pending[nick.toLowerCase()] = { nick, amount };
+          saveDb();
+          return sendJson(res, 200, { ok: true, amount });
+        }
+
+        if (req.url === "/api/withdraw") {
+          const key = String(data.nick || "").trim().toLowerCase();
+          const password = String(data.password || "");
+          const amount = Math.floor(Number(data.amount) || 0);
+          const user = db.users[key];
+
+          if (!user || !user.passwordHash || user.passwordHash !== simpleHash(password)) {
+            return sendJson(res, 401, { ok: false, error: "Zaloguj się ponownie." });
+          }
+          if (amount <= 0 || user.balance < amount) {
+            return sendJson(res, 400, { ok: false, error: "Za małe saldo do wypłaty." });
+          }
+
+          user.balance -= amount;
+          db.withdraws.unshift({
+            id: Date.now(),
+            nick: user.nick,
+            amount,
+            status: "OCZEKUJE"
+          });
           saveDb();
           return sendJson(res, 200, {
             ok: true,
@@ -237,113 +306,43 @@ const server = http.createServer((req, res) => {
           });
         }
 
-        if (!existing || !existing.passwordHash) {
-          return sendJson(res, 400, {
-            ok: false,
-            error: "Nie ma jeszcze konta na ten nick — kliknij Zarejestruj się."
-          });
+        if (data.pass !== PASS) {
+          return sendJson(res, 403, { error: "Brak dostępu." });
         }
 
-        if (existing.passwordHash !== hashed) {
-          return sendJson(res, 401, {
-            ok: false,
-            error: "Złe hasło."
-          });
-        }
-
-        return sendJson(res, 200, {
-          ok: true,
-          user: {
-            nick: existing.nick,
-            balance: existing.balance,
-            totalDeposited: existing.totalDeposited
+        if (req.url === "/api/save-user") {
+          upsertUser(data.nick, data.balance, data.totalDeposited);
+        } else if (req.url === "/api/delete-user") {
+          deleteUser(data.key);
+        } else if (req.url === "/api/simulate-send") {
+          simulateSend(data.nick, data.amount, Boolean(data.instant));
+        } else if (req.url === "/api/approve") {
+          const item = db.pending[String(data.key || "").toLowerCase()];
+          if (item) addBalance(item.nick, item.amount);
+        } else if (req.url === "/api/done-withdraw") {
+          const w = db.withdraws.find(x => x.id === data.id);
+          if (w) {
+            w.status = "WYPLACONO";
+            saveDb();
           }
-        });
-      }
-
-      if (req.url === "/api/pending") {
-        const nick = String(data.nick || "").trim();
-        const amount = Math.floor(Number(data.amount) || 0);
-        if (!nick) {
-          return sendJson(res, 400, { ok: false, error: "Brak nicku" });
-        }
-        if (amount <= 0) {
-          return sendJson(res, 400, { ok: false, error: "Wpisz kwotę większą od 0." });
-        }
-        db.pending[nick.toLowerCase()] = { nick, amount };
-        saveDb();
-        return sendJson(res, 200, { ok: true, amount });
-      }
-
-      if (req.url === "/api/withdraw") {
-        const key = String(data.nick || "").trim().toLowerCase();
-        const password = String(data.password || "");
-        const amount = Math.floor(Number(data.amount) || 0);
-        const user = db.users[key];
-
-        if (!user || !user.passwordHash || user.passwordHash !== simpleHash(password)) {
-          return sendJson(res, 401, { ok: false, error: "Zaloguj się ponownie." });
-        }
-        if (amount <= 0 || user.balance < amount) {
-          return sendJson(res, 400, { ok: false, error: "Za małe saldo do wypłaty." });
-        }
-
-        user.balance -= amount;
-        db.withdraws.unshift({
-          id: Date.now(),
-          nick: user.nick,
-          amount,
-          status: "OCZEKUJE"
-        });
-        saveDb();
-        return sendJson(res, 200, {
-          ok: true,
-          user: {
-            nick: user.nick,
-            balance: user.balance,
-            totalDeposited: user.totalDeposited
-          }
-        });
-      }
-
-      if (data.pass !== PASS) {
-        return sendJson(res, 403, { error: "Brak dostepu" });
-      }
-
-      if (req.url === "/api/deposit") {
-        addBalance(data.nick, data.amount);
-      } else if (req.url === "/api/save-user") {
-        upsertUser(data.nick, data.balance, data.totalDeposited);
-      } else if (req.url === "/api/delete-user") {
-        deleteUser(data.key);
-      } else if (req.url === "/api/simulate-send") {
-        simulateSend(data.nick, data.amount, Boolean(data.instant));
-      } else if (req.url === "/api/approve") {
-        const item = db.pending[String(data.key || "").toLowerCase()];
-        if (item) addBalance(item.nick, item.amount);
-      } else if (req.url === "/api/done-withdraw") {
-        const w = db.withdraws.find(x => x.id === data.id);
-        if (w) {
-          w.status = "WYPLACONO";
+        } else if (req.url === "/api/interest") {
+          applyTenPercentOnce();
+          db.lastDailyBonusAt = Date.now();
           saveDb();
         }
-      } else if (req.url === "/api/interest") {
-        applyTenPercentOnce();
-        db.lastDailyBonusAt = Date.now();
-        saveDb();
-      }
 
-      return sendJson(res, 200, { ok: true });
-    });
+        return sendJson(res, 200, { ok: true });
+      });
+    }
+
+    res.writeHead(404);
+    res.end("Not found");
+  } catch (_) {
+    res.writeHead(500);
+    res.end("Server error");
   }
-
-  res.writeHead(404);
-  res.end("Not found");
 });
-
-setInterval(check24hBonus, 60 * 1000);
 
 server.listen(PORT, () => {
-  console.log("Bank Nezzi dziala na porcie", PORT);
+  console.log("Bank Nezzi działa na porcie", PORT);
 });
-                  
