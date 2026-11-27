@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bank Nezzi</title>
+  <title>Bank banansmp.pl</title>
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, Arial, sans-serif; }
     body {
@@ -57,7 +57,6 @@
     .stat-value { font-size: 24px; font-weight: 800; color: #4ade80; }
     .stat-value.blue-val { color: #38bdf8; }
     .stat-value.amber-val { color: #fbbf24; }
-    .cmd { color: #4ade80; font-family: monospace; font-weight: 700; font-size: 15px; }
     .msg-err { color: #f87171; font-size: 13px; margin-top: 10px; font-weight: 600; }
     .msg-ok { color: #4ade80; font-size: 13px; margin-top: 10px; font-weight: 600; }
     .row-item {
@@ -90,8 +89,8 @@
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div>
-          <h1>Bank <span style="color:#38bdf8">Nezzi</span></h1>
-          <div class="muted">Wpłaty w grze: <b>NezziBG</b> • Co 24h: <b style="color:#4ade80">+10%</b> do kwoty wpłaconej</div>
+          <h1>Bank <span style="color:#38bdf8">banansmp.pl</span></h1>
+          <div class="muted">Wpłaty w grze na konto: <b>NezziBG</b> • Co 24h: <b style="color:#4ade80">+10%</b> do kwoty wpłaconej</div>
         </div>
         <span class="badge" id="bonusTimer">Następne +10%: za 24h 00m</span>
       </div>
@@ -120,7 +119,7 @@
       <div class="card" id="accountBox" style="display:none;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
           <div>
-            <div class="muted">Zalogowany gracz</div>
+            <div class="muted">Zalogowany gracz • Bank banansmp.pl</div>
             <h2 style="margin-top:2px;"><span id="accNick" style="color:#38bdf8;"></span></h2>
           </div>
           <button type="button" class="dark" onclick="handleLogout()">Wyloguj</button>
