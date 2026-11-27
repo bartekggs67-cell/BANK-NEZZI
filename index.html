@@ -118,10 +118,23 @@
       color: #38bdf8;
       font-weight: 700;
     }
+    #jsErrorBanner {
+      display: none;
+      background: #7f1d1d;
+      border: 1px solid #f87171;
+      color: #fecaca;
+      padding: 12px 14px;
+      border-radius: 12px;
+      margin-bottom: 14px;
+      font-size: 13px;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
   <div class="container">
+    <div id="jsErrorBanner"></div>
+
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div>
@@ -131,13 +144,12 @@
         <span class="badge">Indywidualne 24h</span>
       </div>
       <div class="row">
-        <button type="button" class="blue" id="tabBtnKonto" onclick="showTab('konto')">Moje konto</button>
-        <button type="button" class="dark" id="tabBtnTopki" onclick="showTab('topki')">Topki</button>
-        <button type="button" class="dark" id="tabBtnAdmin" onclick="showTab('admin')">Panel Admina</button>
+        <button type="button" class="blue" id="tabBtnKonto">Moje konto</button>
+        <button type="button" class="dark" id="tabBtnTopki">Topki</button>
+        <button type="button" class="dark" id="tabBtnAdmin">Panel Admina</button>
       </div>
     </div>
 
-    <!-- ZAKŁADKA MOJE KONTO -->
     <div id="pane-konto" class="pane active">
       <div class="card" id="authBox">
         <h2>Konto gracza</h2>
@@ -147,20 +159,19 @@
           <input id="loginPass" type="password" placeholder="Hasło..." />
         </div>
         <div class="row">
-          <button type="button" class="blue" onclick="handleLogin()">Zaloguj</button>
-          <button type="button" class="green" onclick="openRegModal()">Zarejestruj się</button>
+          <button type="button" class="blue" id="btnLogin">Zaloguj</button>
+          <button type="button" class="green" id="btnOpenReg">Zarejestruj się</button>
         </div>
         <div id="loginMsg" class="msg-err" style="display:none;"></div>
       </div>
 
-      <!-- PANEL KONTA PO ZALOGOWANIU / POTWIERDZENIU REJESTRACJI -->
       <div class="card" id="accountBox" style="display:none;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
           <div>
             <div class="muted">Zalogowany gracz • Bank banansmp.pl</div>
             <h2 style="margin-top:2px;"><span id="accNick" style="color:#38bdf8;"></span></h2>
           </div>
-          <button type="button" class="dark" onclick="handleLogout()">Wyloguj</button>
+          <button type="button" class="dark" id="btnLogout">Wyloguj</button>
         </div>
 
         <div class="stats-grid">
@@ -184,7 +195,7 @@
 
         <div class="row" style="margin-top:16px;">
           <input id="depAmount" type="number" min="1" placeholder="Kwota wpłaty ($)" style="width:165px;" />
-          <button type="button" class="blue" onclick="handlePay()">Generuj /pay</button>
+          <button type="button" class="blue" id="btnPay">Generuj /pay</button>
         </div>
         <div id="depMsg" style="display:none;"></div>
 
@@ -193,17 +204,16 @@
           <div class="row">
             <input id="calcBase" type="number" min="1" placeholder="Kwota bazowa ($)" style="width:155px;" />
             <input id="calcPct" type="number" min="1" value="100" placeholder="% wypłaty" style="width:105px;" />
-            <button type="button" class="dark" onclick="handleCalc()">Oblicz</button>
+            <button type="button" class="dark" id="btnCalc">Oblicz</button>
           </div>
           <div class="row">
             <input id="wdAmount" type="number" min="1" placeholder="Kwota do wypłaty ($)" style="width:170px;" />
-            <button type="button" class="amber" onclick="handleWithdraw()">Wypłać</button>
+            <button type="button" class="amber" id="btnWithdraw">Wypłać</button>
           </div>
           <div id="wdMsg" style="display:none;"></div>
         </div>
       </div>
 
-      <!-- STAŁA LISTA WPŁAT (WIDOCZNA CAŁY CZAS, NIE USUWA SIĘ) -->
       <div class="card">
         <h2>Historia wpłat (stała lista)</h2>
         <div class="muted">Wszystkie zatwierdzone wpłaty na <b>NezziBG</b> — zapisane na stałe.</div>
@@ -211,7 +221,6 @@
       </div>
     </div>
 
-    <!-- ZAKŁADKA TOPKI -->
     <div id="pane-topki" class="pane">
       <div class="card">
         <h2>Topki graczy</h2>
@@ -228,7 +237,6 @@
       </div>
     </div>
 
-    <!-- ZAKŁADKA PANEL ADMINA -->
     <div id="pane-admin" class="pane">
       <div class="card">
         <h2 style="color:#38bdf8;">Panel Admina</h2>
@@ -236,30 +244,29 @@
           <div class="muted">Zaloguj się hasłem głównym albo wygenerowanym loginem i hasłem administratora.</div>
           <div class="row">
             <input id="adminMasterPass" type="password" placeholder="Hasło głównego admina" />
-            <button type="button" class="blue" onclick="unlockMasterAdmin()">Wejdź jako główny admin</button>
+            <button type="button" class="blue" id="btnMasterLogin">Wejdź jako główny admin</button>
           </div>
           <div class="row">
             <input id="adminSubLogin" type="text" placeholder="Login admina (cyfry)" style="width:175px;" />
             <input id="adminSubPass" type="password" placeholder="Hasło admina" style="width:175px;" />
-            <button type="button" class="dark" onclick="unlockSubAdmin()">Wejdź jako admin</button>
+            <button type="button" class="dark" id="btnSubLogin">Wejdź jako admin</button>
           </div>
           <div id="adminLoginMsg" class="msg-err" style="display:none;"></div>
         </div>
 
         <div id="adminBody" style="display:none;">
-          <!-- ZARZĄDZANIE ADMINAMI (WIDOCZNE DLA GŁÓWNEGO ADMINA) -->
           <div class="card" id="adminManageBox" style="margin-top:12px; border-color:#38bdf8;">
             <h3>Konta administratorów</h3>
             <div class="muted">Login: same cyfry (max 10). Hasło: cyfry oraz małe i duże litery.</div>
             <div class="row">
-              <button type="button" class="green" onclick="generateAdminAccount()">Generuj konto admina</button>
+              <button type="button" class="green" id="btnGenAdmin">Generuj konto admina</button>
             </div>
             <div id="generatedAdminBox" class="verify-box" style="display:none;"></div>
             <div id="adminsList" style="margin-top:10px;"></div>
           </div>
 
           <div class="row">
-            <button type="button" class="green" onclick="adminCall('/api/interest', {})">+10% wszystkim teraz</button>
+            <button type="button" class="green" id="btnInterest">+10% wszystkim teraz</button>
           </div>
 
           <h3 style="margin-top:16px;">Oczekujące rejestracje (/pay 67–1000 $)</h3>
@@ -277,7 +284,7 @@
               <input id="edNick" type="text" placeholder="Nick" style="width:140px;" />
               <input id="edBal" type="number" min="0" placeholder="Saldo ($)" style="width:110px;" />
               <input id="edDep" type="number" min="0" placeholder="Wpłacono ($)" style="width:120px;" />
-              <button type="button" class="blue" onclick="saveUserAdmin()">Zapisz konto</button>
+              <button type="button" class="blue" id="btnSaveUser">Zapisz konto</button>
             </div>
           </div>
 
@@ -286,8 +293,8 @@
             <div class="row">
               <input id="simNick" type="text" placeholder="Nick" style="width:140px;" />
               <input id="simAmt" type="number" min="1" placeholder="Kwota ($)" style="width:110px;" />
-              <button type="button" class="dark" onclick="simAdmin(false)">Dodaj oczekującą</button>
-              <button type="button" class="green" onclick="simAdmin(true)">Symuluj i zaksięguj</button>
+              <button type="button" class="dark" id="btnSimPending">Dodaj oczekującą</button>
+              <button type="button" class="green" id="btnSimInstant">Symuluj i zaksięguj</button>
             </div>
           </div>
 
@@ -298,12 +305,11 @@
     </div>
   </div>
 
-  <!-- OKIENKO REJESTRACJI -->
   <div class="modal-backdrop" id="regModal">
     <div class="modal-card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <h2>Rejestracja konta</h2>
-        <button type="button" class="dark" style="padding:6px 11px;" onclick="closeRegModal()">X</button>
+        <button type="button" class="dark" style="padding:6px 11px;" id="btnCloseReg">X</button>
       </div>
       <div class="muted">Wpisz nick z gry, hasło oraz potwierdź hasło.</div>
 
@@ -314,7 +320,7 @@
           <input id="regPassConfirm" type="password" placeholder="Potwierdź hasło..." style="width:100%;" />
         </div>
         <div class="row">
-          <button type="button" class="green" style="width:100%;" onclick="startRegistration()">Dalej — wygeneruj /pay</button>
+          <button type="button" class="green" style="width:100%;" id="btnStartReg">Dalej — wygeneruj /pay</button>
         </div>
       </div>
 
@@ -325,8 +331,8 @@
           <span class="cmd" id="regPayCmd"></span>
         </div>
         <div class="row">
-          <button type="button" class="green" onclick="checkRegistrationStatus()">Sprawdź przelew</button>
-          <button type="button" class="dark" onclick="resetRegModal()">Zmień dane</button>
+          <button type="button" class="green" id="btnCheckReg">Sprawdź przelew</button>
+          <button type="button" class="dark" id="btnResetReg">Zmień dane</button>
         </div>
       </div>
 
@@ -335,9 +341,17 @@
   </div>
 
   <script>
+    window.addEventListener("error", function (ev) {
+      const banner = document.getElementById("jsErrorBanner");
+      if (banner) {
+        banner.style.display = "block";
+        banner.textContent = "Błąd skryptu: " + (ev.message || "nieznany błąd");
+      }
+    });
+
     let currentUser = null;
     let pendingReg = null;
-    let adminAuth = null; // { pass, adminLogin, adminPassword, isMaster }
+    let adminAuth = null;
     let adminAccounts = [];
     let computedPayout = null;
     let stateData = { users: {}, pendingRegistrations: {}, pending: {}, withdraws: [], depositHistory: [] };
@@ -472,22 +486,33 @@
       }
 
       const history = stateData.depositHistory || [];
-      document.getElementById("depositHistoryList").innerHTML = history.length
-        ? history.map((h, i) =>
-            '<div class="row-item"><span>#' + (history.length - i) + ' <b>' + h.nick + '</b> <span class="muted">(' + h.note + (h.createdAt ? ' • ' + fmtDate(h.createdAt) : '') + ')</span></span><span style="color:#4ade80;font-weight:700;">+' + h.amount + ' $</span></div>'
-          ).join("")
-        : '<div class="muted">Brak wpłat.</div>';
+      const histEl = document.getElementById("depositHistoryList");
+      histEl.innerHTML = "";
+      if (!history.length) {
+        histEl.innerHTML = '<div class="muted">Brak wpłat.</div>';
+      } else {
+        history.forEach((h, i) => {
+          const row = document.createElement("div");
+          row.className = "row-item";
+          const left = document.createElement("span");
+          left.textContent = "#" + (history.length - i) + " " + h.nick + " (" + h.note + (h.createdAt ? " • " + fmtDate(h.createdAt) : "") + ")";
+          const right = document.createElement("span");
+          right.style.color = "#4ade80";
+          right.style.fontWeight = "700";
+          right.textContent = "+" + h.amount + " $";
+          row.append(left, right);
+          histEl.appendChild(row);
+        });
+      }
 
       const users = Object.values(stateData.users || {});
       const byBal = [...users].sort((a, b) => b.balance - a.balance);
       const byDep = [...users].sort((a, b) => b.totalDeposited - a.totalDeposited);
 
-      document.getElementById("topBalance").innerHTML = byBal.length
-        ? byBal.map((u, i) =>
-            '<div class="row-item"><span>#' + (i + 1) + ' <b>' + u.nick + '</b></span><span style="color:#4ade80;font-weight:700;">' + u.balance + ' $</span></div>'
-          ).join("")
-        : '<div class="muted">Brak danych.</div>';
-
-      document.getElementById("topDeposited").innerHTML = byDep.length
-        ? byDep.map((u, i) =>
-            '<div class="row-item"><span>#' + (i + 1) + ' <b>' + u.nick + '</b></span
+      const topBalEl = document.getElementById("topBalance");
+      topBalEl.innerHTML = "";
+      if (!byBal.length) {
+        topBalEl.innerHTML = '<div class="muted">Brak danych.</div>';
+      } else {
+        byBal.forEach((u, i) => {
+          con
