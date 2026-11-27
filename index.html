@@ -43,7 +43,7 @@
     .pane.active { display: block; }
     .stats-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
       gap: 12px;
       margin-top: 14px;
     }
@@ -54,9 +54,10 @@
       padding: 14px;
     }
     .stat-label { color: #94a3b8; font-size: 12px; margin-bottom: 6px; }
-    .stat-value { font-size: 24px; font-weight: 800; color: #4ade80; }
+    .stat-value { font-size: 23px; font-weight: 800; color: #4ade80; }
     .stat-value.blue-val { color: #38bdf8; }
     .stat-value.amber-val { color: #fbbf24; }
+    .cmd { color: #4ade80; font-family: monospace; font-weight: 700; font-size: 16px; }
     .msg-err { color: #f87171; font-size: 13px; margin-top: 10px; font-weight: 600; }
     .msg-ok { color: #4ade80; font-size: 13px; margin-top: 10px; font-weight: 600; }
     .row-item {
@@ -82,6 +83,41 @@
       font-size: 12px;
       font-weight: 700;
     }
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 7, 18, 0.82);
+      z-index: 999;
+      padding: 16px;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-card {
+      width: 100%;
+      max-width: 440px;
+      background: #131b2e;
+      border: 1px solid #38bdf8;
+      border-radius: 16px;
+      padding: 20px;
+    }
+    .verify-box {
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: 12px;
+      background: #0b1020;
+      border: 1px solid #38bdf8;
+    }
+    .mono-pill {
+      font-family: monospace;
+      background: #090d1a;
+      border: 1px solid #334155;
+      padding: 4px 8px;
+      border-radius: 6px;
+      color: #38bdf8;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -90,9 +126,9 @@
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
         <div>
           <h1>Bank <span style="color:#38bdf8">banansmp.pl</span></h1>
-          <div class="muted">Wpłaty w grze na konto: <b>NezziBG</b> • Co 24h: <b style="color:#4ade80">+10%</b> do kwoty wpłaconej</div>
+          <div class="muted">Wpłaty w grze na konto: <b>NezziBG</b> • U każdego gracza <b style="color:#4ade80">+10%</b> co 24h od wpłaty</div>
         </div>
-        <span class="badge" id="bonusTimer">Następne +10%: za 24h 00m</span>
+        <span class="badge">Indywidualne 24h</span>
       </div>
       <div class="row">
         <button type="button" class="blue" id="tabBtnKonto" onclick="showTab('konto')">Moje konto</button>
@@ -101,21 +137,23 @@
       </div>
     </div>
 
+    <!-- ZAKŁADKA MOJE KONTO -->
     <div id="pane-konto" class="pane active">
       <div class="card" id="authBox">
-        <h2>Logowanie / Rejestracja</h2>
-        <div class="muted">Wpisz swój nick z Minecrafta i hasło, a potem kliknij <b>Zaloguj</b> albo <b>Zarejestruj się</b>.</div>
+        <h2>Konto gracza</h2>
+        <div class="muted">Masz już konto? Zaloguj się swoim nickiem i hasłem. Nie masz konta? Kliknij <b>Zarejestruj się</b>.</div>
         <div class="row">
-          <input id="authNick" type="text" placeholder="Nick z Minecraft..." />
-          <input id="authPass" type="password" placeholder="Hasło (min. 4 znaki)" />
+          <input id="loginNick" type="text" placeholder="Nick z Minecraft..." />
+          <input id="loginPass" type="password" placeholder="Hasło..." />
         </div>
         <div class="row">
-          <button type="button" class="blue" onclick="handleAuth('login')">Zaloguj</button>
-          <button type="button" class="green" onclick="handleAuth('register')">Zarejestruj się</button>
+          <button type="button" class="blue" onclick="handleLogin()">Zaloguj</button>
+          <button type="button" class="green" onclick="openRegModal()">Zarejestruj się</button>
         </div>
-        <div id="authMsg" class="msg-err" style="display:none;"></div>
+        <div id="loginMsg" class="msg-err" style="display:none;"></div>
       </div>
 
+      <!-- PANEL KONTA PO ZALOGOWANIU / POTWIERDZENIU REJESTRACJI -->
       <div class="card" id="accountBox" style="display:none;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
           <div>
@@ -137,6 +175,10 @@
           <div class="stat-box">
             <div class="stat-label">Do wypłaty po obliczeniu</div>
             <div class="stat-value amber-val" id="accCalculated">0 $</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Twoje kolejne +10% za</div>
+            <div class="stat-value" style="font-size:19px; color:#38bdf8;" id="accTimer">24h 00m</div>
           </div>
         </div>
 
@@ -161,12 +203,15 @@
         </div>
       </div>
 
+      <!-- STAŁA LISTA WPŁAT (WIDOCZNA CAŁY CZAS, NIE USUWA SIĘ) -->
       <div class="card">
-        <h2>Lista wpłacających</h2>
-        <div id="depositorsList" class="muted">Brak wpłat.</div>
+        <h2>Historia wpłat (stała lista)</h2>
+        <div class="muted">Wszystkie zatwierdzone wpłaty na <b>NezziBG</b> — zapisane na stałe.</div>
+        <div id="depositHistoryList" class="muted" style="margin-top:8px;">Brak wpłat.</div>
       </div>
     </div>
 
+    <!-- ZAKŁADKA TOPKI -->
     <div id="pane-topki" class="pane">
       <div class="card">
         <h2>Topki graczy</h2>
@@ -183,38 +228,68 @@
       </div>
     </div>
 
+    <!-- ZAKŁADKA PANEL ADMINA -->
     <div id="pane-admin" class="pane">
       <div class="card">
         <h2 style="color:#38bdf8;">Panel Admina</h2>
-        <div id="adminGate" class="row">
-          <input id="adminPass" type="password" placeholder="Hasło administratora" />
-          <button type="button" class="blue" onclick="unlockAdmin()">Odblokuj</button>
+        <div id="adminGate">
+          <div class="muted">Zaloguj się hasłem głównym albo wygenerowanym loginem i hasłem administratora.</div>
+          <div class="row">
+            <input id="adminMasterPass" type="password" placeholder="Hasło głównego admina" />
+            <button type="button" class="blue" onclick="unlockMasterAdmin()">Wejdź jako główny admin</button>
+          </div>
+          <div class="row">
+            <input id="adminSubLogin" type="text" placeholder="Login admina (cyfry)" style="width:175px;" />
+            <input id="adminSubPass" type="password" placeholder="Hasło admina" style="width:175px;" />
+            <button type="button" class="dark" onclick="unlockSubAdmin()">Wejdź jako admin</button>
+          </div>
+          <div id="adminLoginMsg" class="msg-err" style="display:none;"></div>
         </div>
 
         <div id="adminBody" style="display:none;">
-          <div class="row">
-            <button type="button" class="green" onclick="adminCall('/api/interest', {})">+10% teraz</button>
+          <!-- ZARZĄDZANIE ADMINAMI (WIDOCZNE DLA GŁÓWNEGO ADMINA) -->
+          <div class="card" id="adminManageBox" style="margin-top:12px; border-color:#38bdf8;">
+            <h3>Konta administratorów</h3>
+            <div class="muted">Login: same cyfry (max 10). Hasło: cyfry oraz małe i duże litery.</div>
+            <div class="row">
+              <button type="button" class="green" onclick="generateAdminAccount()">Generuj konto admina</button>
+            </div>
+            <div id="generatedAdminBox" class="verify-box" style="display:none;"></div>
+            <div id="adminsList" style="margin-top:10px;"></div>
           </div>
 
           <div class="row">
-            <input id="edNick" type="text" placeholder="Nick" style="width:140px;" />
-            <input id="edBal" type="number" min="0" placeholder="Saldo ($)" style="width:110px;" />
-            <input id="edDep" type="number" min="0" placeholder="Wpłacono ($)" style="width:120px;" />
-            <button type="button" class="blue" onclick="saveUserAdmin()">Zapisz konto</button>
+            <button type="button" class="green" onclick="adminCall('/api/interest', {})">+10% wszystkim teraz</button>
           </div>
 
-          <div class="row">
-            <input id="simNick" type="text" placeholder="Nick" style="width:140px;" />
-            <input id="simAmt" type="number" min="1" placeholder="Kwota ($)" style="width:110px;" />
-            <button type="button" class="dark" onclick="simAdmin(false)">Dodaj oczekującą</button>
-            <button type="button" class="green" onclick="simAdmin(true)">Symuluj i zaksięguj</button>
-          </div>
+          <h3 style="margin-top:16px;">Oczekujące rejestracje (/pay 67–1000 $)</h3>
+          <div id="admRegs"></div>
 
           <h3 style="margin-top:16px;">Oczekujące wpłaty</h3>
           <div id="admPending"></div>
 
           <h3 style="margin-top:16px;">Oczekujące wypłaty</h3>
           <div id="admWithdraws"></div>
+
+          <div class="card" style="margin-top:14px;">
+            <h3>Dodaj lub edytuj konto gracza</h3>
+            <div class="row">
+              <input id="edNick" type="text" placeholder="Nick" style="width:140px;" />
+              <input id="edBal" type="number" min="0" placeholder="Saldo ($)" style="width:110px;" />
+              <input id="edDep" type="number" min="0" placeholder="Wpłacono ($)" style="width:120px;" />
+              <button type="button" class="blue" onclick="saveUserAdmin()">Zapisz konto</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:14px;">
+            <h3>Symuluj wysłanie hajsu</h3>
+            <div class="row">
+              <input id="simNick" type="text" placeholder="Nick" style="width:140px;" />
+              <input id="simAmt" type="number" min="1" placeholder="Kwota ($)" style="width:110px;" />
+              <button type="button" class="dark" onclick="simAdmin(false)">Dodaj oczekującą</button>
+              <button type="button" class="green" onclick="simAdmin(true)">Symuluj i zaksięguj</button>
+            </div>
+          </div>
 
           <h3 style="margin-top:16px;">Gracze</h3>
           <div id="admUsers"></div>
@@ -223,17 +298,61 @@
     </div>
   </div>
 
+  <!-- OKIENKO REJESTRACJI -->
+  <div class="modal-backdrop" id="regModal">
+    <div class="modal-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2>Rejestracja konta</h2>
+        <button type="button" class="dark" style="padding:6px 11px;" onclick="closeRegModal()">X</button>
+      </div>
+      <div class="muted">Wpisz nick z gry, hasło oraz potwierdź hasło.</div>
+
+      <div id="regStepForm">
+        <div class="row">
+          <input id="regNick" type="text" placeholder="Nick z gry..." style="width:100%;" />
+          <input id="regPass" type="password" placeholder="Hasło (min. 4 znaki)..." style="width:100%;" />
+          <input id="regPassConfirm" type="password" placeholder="Potwierdź hasło..." style="width:100%;" />
+        </div>
+        <div class="row">
+          <button type="button" class="green" style="width:100%;" onclick="startRegistration()">Dalej — wygeneruj /pay</button>
+        </div>
+      </div>
+
+      <div id="regStepVerify" class="verify-box" style="display:none;">
+        <div style="font-weight:700; color:#38bdf8; margin-bottom:6px;">Potwierdź rejestrację przelewem w grze</div>
+        <div class="muted">Wyślij dokładnie tę kwotę (wylosowaną z 67–1000 $), aby nikt nie zajął cudzego nicku. Po otrzymaniu przelewu Twoje konto odpali się automatycznie:</div>
+        <div style="margin:10px 0;">
+          <span class="cmd" id="regPayCmd"></span>
+        </div>
+        <div class="row">
+          <button type="button" class="green" onclick="checkRegistrationStatus()">Sprawdź przelew</button>
+          <button type="button" class="dark" onclick="resetRegModal()">Zmień dane</button>
+        </div>
+      </div>
+
+      <div id="regMsg" class="msg-err" style="display:none;"></div>
+    </div>
+  </div>
+
   <script>
     let currentUser = null;
-    let adminSecret = "";
+    let pendingReg = null;
+    let adminAuth = null; // { pass, adminLogin, adminPassword, isMaster }
+    let adminAccounts = [];
     let computedPayout = null;
-    let stateData = { users: {}, pending: {}, withdraws: [], nextBonusInMs: 86400000 };
+    let stateData = { users: {}, pendingRegistrations: {}, pending: {}, withdraws: [], depositHistory: [] };
 
-    function fmtTime(ms) {
-      const totalMin = Math.max(0, Math.floor(Number(ms || 0) / 60000));
-      const h = Math.floor(totalMin / 60);
-      const m = totalMin % 60;
+    function fmtDuration(ms) {
+      const totalSec = Math.max(0, Math.floor(Number(ms || 0) / 1000));
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
       return h + "h " + String(m).padStart(2, "0") + "m";
+    }
+
+    function fmtDate(ts) {
+      if (!ts) return "";
+      const d = new Date(ts);
+      return d.toLocaleDateString("pl-PL") + " " + d.toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
     }
 
     function setMsg(id, text, isOk) {
@@ -259,6 +378,22 @@
       render();
     }
 
+    function openRegModal() {
+      document.getElementById("regModal").classList.add("open");
+      setMsg("regMsg", "");
+    }
+
+    function closeRegModal() {
+      document.getElementById("regModal").classList.remove("open");
+    }
+
+    function resetRegModal() {
+      pendingReg = null;
+      document.getElementById("regStepForm").style.display = "block";
+      document.getElementById("regStepVerify").style.display = "none";
+      setMsg("regMsg", "");
+    }
+
     async function api(url, body) {
       try {
         const res = await fetch(url, body ? {
@@ -273,18 +408,42 @@
       }
     }
 
+    async function checkRegistrationStatus() {
+      if (!pendingReg || currentUser) return;
+      const res = await api("/api/register-check", {
+        nick: pendingReg.nick,
+        token: pendingReg.token
+      });
+      if (!res.ok) {
+        resetRegModal();
+        setMsg("regMsg", res.data.error || "Błąd rejestracji.", false);
+        return;
+      }
+      if (res.data.approved && res.data.user) {
+        currentUser = {
+          nick: res.data.user.nick,
+          password: pendingReg.password
+        };
+        pendingReg = null;
+        computedPayout = null;
+        resetRegModal();
+        closeRegModal();
+        await refreshState();
+      }
+    }
+
     async function refreshState() {
       const res = await api("/api/state");
       if (res.ok && res.data && res.data.users) {
         stateData = res.data;
+        if (pendingReg && !currentUser) {
+          await checkRegistrationStatus();
+        }
         render();
       }
     }
 
     function render() {
-      document.getElementById("bonusTimer").textContent =
-        "Następne +10%: za " + fmtTime(stateData.nextBonusInMs);
-
       const authBox = document.getElementById("authBox");
       const accountBox = document.getElementById("accountBox");
 
@@ -294,7 +453,8 @@
         const u = (stateData.users || {})[currentUser.nick.toLowerCase()] || {
           nick: currentUser.nick,
           balance: 0,
-          totalDeposited: 0
+          totalDeposited: 0,
+          remainingMs: 0
         };
         const dep = Number(u.totalDeposited || 0);
         const bal = Number(u.balance || 0);
@@ -304,19 +464,21 @@
         document.getElementById("accDeposited").textContent = dep + " $";
         document.getElementById("accBalance").textContent = bal + " $";
         document.getElementById("accCalculated").textContent = calc + " $";
+        document.getElementById("accTimer").textContent =
+          u.remainingMs > 0 ? fmtDuration(u.remainingMs) : "Po pierwszej wpłacie";
       } else {
         authBox.style.display = "block";
         accountBox.style.display = "none";
       }
 
-      const users = Object.values(stateData.users || {});
-      const depositors = users.filter(u => u.totalDeposited > 0).sort((a, b) => b.totalDeposited - a.totalDeposited);
-      document.getElementById("depositorsList").innerHTML = depositors.length
-        ? depositors.map((u, i) =>
-            '<div class="row-item"><span>#' + (i + 1) + ' <b>' + u.nick + '</b></span><span style="color:#4ade80;font-weight:700;">Wpłacono: ' + u.totalDeposited + ' $ • Saldo: ' + u.balance + ' $</span></div>'
+      const history = stateData.depositHistory || [];
+      document.getElementById("depositHistoryList").innerHTML = history.length
+        ? history.map((h, i) =>
+            '<div class="row-item"><span>#' + (history.length - i) + ' <b>' + h.nick + '</b> <span class="muted">(' + h.note + (h.createdAt ? ' • ' + fmtDate(h.createdAt) : '') + ')</span></span><span style="color:#4ade80;font-weight:700;">+' + h.amount + ' $</span></div>'
           ).join("")
         : '<div class="muted">Brak wpłat.</div>';
 
+      const users = Object.values(stateData.users || {});
       const byBal = [...users].sort((a, b) => b.balance - a.balance);
       const byDep = [...users].sort((a, b) => b.totalDeposited - a.totalDeposited);
 
@@ -328,144 +490,4 @@
 
       document.getElementById("topDeposited").innerHTML = byDep.length
         ? byDep.map((u, i) =>
-            '<div class="row-item"><span>#' + (i + 1) + ' <b>' + u.nick + '</b></span><span style="color:#38bdf8;font-weight:700;">' + u.totalDeposited + ' $</span></div>'
-          ).join("")
-        : '<div class="muted">Brak danych.</div>';
-
-      if (adminSecret) {
-        renderAdmin();
-      }
-    }
-
-    function renderAdmin() {
-      document.getElementById("admPending").innerHTML = Object.entries(stateData.pending || {}).map(([key, p]) =>
-        '<div class="row-item"><span>' + p.nick + ' — ' + p.amount + ' $</span><button type="button" class="green" onclick="adminCall(\'/api/approve\',{key:\'' + key + '\'})">Zatwierdź</button></div>'
-      ).join("") || '<div class="muted">Brak oczekujących wpłat.</div>';
-
-      document.getElementById("admWithdraws").innerHTML = (stateData.withdraws || []).filter(w => w.status === "OCZEKUJE").map(w =>
-        '<div class="row-item"><span>/pay ' + w.nick + ' ' + w.amount + '</span><button type="button" class="amber" onclick="adminCall(\'/api/done-withdraw\',{id:' + w.id + '})">Wypłacono</button></div>'
-      ).join("") || '<div class="muted">Brak oczekujących wypłat.</div>';
-
-      document.getElementById("admUsers").innerHTML = Object.entries(stateData.users || {}).map(([key, u]) =>
-        '<div class="row-item"><span><b>' + u.nick + '</b> • wpłacono: ' + u.totalDeposited + ' $ • saldo: ' + u.balance + ' $</span><span><button type="button" class="blue" onclick="prefillUser(\'' + u.nick + '\',' + u.balance + ',' + u.totalDeposited + ')">Edytuj</button> <button type="button" class="red" onclick="adminCall(\'/api/delete-user\',{key:\'' + key + '\'})">Usuń</button></span></div>'
-      ).join("") || '<div class="muted">Brak graczy.</div>';
-    }
-
-    async function handleAuth(mode) {
-      const nick = document.getElementById("authNick").value.trim();
-      const password = document.getElementById("authPass").value;
-      setMsg("authMsg", "");
-
-      if (!nick || !password) {
-        return setMsg("authMsg", "Wpisz nick i hasło.", false);
-      }
-
-      const res = await api("/api/auth", { nick, password, mode });
-      if (!res.ok || !res.data.user) {
-        return setMsg("authMsg", res.data.error || "Błąd uwierzytelniania.", false);
-      }
-
-      currentUser = { nick: res.data.user.nick, password };
-      computedPayout = null;
-      document.getElementById("authPass").value = "";
-      setMsg("depMsg", "");
-      setMsg("wdMsg", "");
-      await refreshState();
-    }
-
-    function handleLogout() {
-      currentUser = null;
-      computedPayout = null;
-      document.getElementById("authNick").value = "";
-      document.getElementById("authPass").value = "";
-      render();
-    }
-
-    async function handlePay() {
-      if (!currentUser) return;
-      const amount = Math.floor(Number(document.getElementById("depAmount").value) || 0);
-      if (amount <= 0) {
-        return setMsg("depMsg", "Wpisz kwotę wpłaty większą od 0.", false);
-      }
-      const res = await api("/api/pending", { nick: currentUser.nick, amount });
-      if (!res.ok) {
-        return setMsg("depMsg", res.data.error || "Błąd generowania wpłaty.", false);
-      }
-      setMsg("depMsg", "Wyślij w grze na konto NezziBG: /pay NezziBG " + res.data.amount, true);
-      await refreshState();
-    }
-
-    function handleCalc() {
-      const base = Number(document.getElementById("calcBase").value || 0);
-      const pct = Number(document.getElementById("calcPct").value || 100);
-      if (base <= 0 || pct <= 0) {
-        return setMsg("wdMsg", "Wpisz poprawną kwotę i procent.", false);
-      }
-      computedPayout = Math.floor((base * pct) / 100);
-      document.getElementById("wdAmount").value = computedPayout;
-      render();
-      setMsg("wdMsg", "Obliczono kwotę do wypłaty: " + computedPayout + " $.", true);
-    }
-
-    async function handleWithdraw() {
-      if (!currentUser) return;
-      const amount = Math.floor(Number(document.getElementById("wdAmount").value) || 0);
-      if (amount <= 0) {
-        return setMsg("wdMsg", "Wpisz poprawną kwotę wypłaty.", false);
-      }
-      const res = await api("/api/withdraw", {
-        nick: currentUser.nick,
-        password: currentUser.password,
-        amount
-      });
-      if (!res.ok) {
-        return setMsg("wdMsg", res.data.error || "Nie udało się zlecić wypłaty.", false);
-      }
-      computedPayout = null;
-      document.getElementById("wdAmount").value = "";
-      setMsg("wdMsg", "Zlecono wypłatę " + amount + " $.", true);
-      await refreshState();
-    }
-
-    function unlockAdmin() {
-      const p = document.getElementById("adminPass").value;
-      if (p !== "7532252") return alert("Złe hasło");
-      adminSecret = p;
-      document.getElementById("adminGate").style.display = "none";
-      document.getElementById("adminBody").style.display = "block";
-      render();
-    }
-
-    async function adminCall(url, payload) {
-      await api(url, { ...payload, pass: adminSecret });
-      await refreshState();
-    }
-
-    function prefillUser(nick, bal, dep) {
-      document.getElementById("edNick").value = nick;
-      document.getElementById("edBal").value = bal;
-      document.getElementById("edDep").value = dep;
-    }
-
-    async function saveUserAdmin() {
-      const nick = document.getElementById("edNick").value.trim();
-      if (!nick) return alert("Podaj nick.");
-      await adminCall("/api/save-user", {
-        nick,
-        balance: Number(document.getElementById("edBal").value || 0),
-        totalDeposited: Number(document.getElementById("edDep").value || 0)
-      });
-    }
-
-    async function simAdmin(instant) {
-      const nick = document.getElementById("simNick").value.trim();
-      const amount = Number(document.getElementById("simAmt").value || 0);
-      if (!nick || amount <= 0) return alert("Podaj nick i kwotę.");
-      await adminCall("/api/simulate-send", { nick, amount, instant });
-    }
-
-    refreshState();
-    setInterval(refreshState, 3000);
-  </script>
-</body>
-</html>
+            '<div class="row-item"><span>#' + (i + 1) + ' <b>' + u.nick + '</b></span
