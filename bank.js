@@ -3,16 +3,18 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const PASS = "7532252";
+const MASTER_PASS = "7532252";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DATA_FILE = path.join(__dirname, "data.json");
 const HTML_FILE = path.join(__dirname, "index.html");
 
 let db = {
   users: {},
+  pendingRegistrations: {},
   pending: {},
   withdraws: [],
-  lastDailyBonusAt: Date.now()
+  depositHistory: [],
+  admins: []
 };
 
 try {
@@ -20,9 +22,11 @@ try {
     const parsed = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
     db = {
       users: parsed.users || {},
+      pendingRegistrations: parsed.pendingRegistrations || {},
       pending: parsed.pending || {},
       withdraws: parsed.withdraws || [],
-      lastDailyBonusAt: Number(parsed.lastDailyBonusAt) || Date.now()
+      depositHistory: parsed.depositHistory || [],
+      admins: parsed.admins || []
     };
   }
 } catch (_) {}
@@ -43,37 +47,78 @@ function simpleHash(str) {
   return (h >>> 0).toString(16);
 }
 
-function applyTenPercentOnce() {
-  Object.values(db.users || {}).forEach(u => {
-    const dep = Number(u.totalDeposited || 0);
-    const bal = Number(u.balance || 0);
-    if (dep > 0) {
-      u.totalDeposited = Math.floor(dep * 1.1);
+function generateAdminCredentials() {
+  let login = "";
+  do {
+    const len = Math.floor(Math.random() * 3) + 8; // 8-10 cyfr (max 10)
+    login = "";
+    for (let i = 0; i < len; i++) {
+      const minDigit = i === 0 ? 1 : 0;
+      login += String(Math.floor(Math.random() * (10 - minDigit)) + minDigit);
     }
-    if (bal > 0) {
-      u.balance = Math.floor(bal * 1.1);
-    } else if (dep > 0) {
-      u.balance = Math.floor(dep * 1.1);
-    }
-  });
+  } while (db.admins.some(a => a.login === login));
+
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  let password = "";
+  for (let i = 0; i < 8; i++) {
+    password += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return { login, password };
 }
 
-function check24hBonus() {
+function isValidAdminAuth(data) {
+  if (!data) return false;
+  if (String(data.pass || "") === MASTER_PASS) return true;
+  const login = String(data.adminLogin || "").trim();
+  const pass = String(data.adminPassword || "");
+  if (!login || !pass) return false;
+  return db.admins.some(a => a.login === login && a.password === pass);
+}
+
+function isMasterAdmin(data) {
+  return String((data && data.pass) || "") === MASTER_PASS;
+}
+
+function processUser24hInterest(user) {
+  if (!user) return false;
+  const dep = Number(user.totalDeposited || 0);
+  const bal = Number(user.balance || 0);
+  if (dep <= 0 && bal <= 0) {
+    user.nextBonusAt = 0;
+    return false;
+  }
+
   const now = Date.now();
-  if (!db.lastDailyBonusAt) {
-    db.lastDailyBonusAt = now;
-    saveDb();
-    return;
+  if (!user.nextBonusAt) {
+    user.nextBonusAt = now + DAY_MS;
+    return true;
   }
-  const elapsed = now - db.lastDailyBonusAt;
-  if (elapsed >= DAY_MS) {
-    const cycles = Math.floor(elapsed / DAY_MS);
+
+  if (now >= user.nextBonusAt) {
+    const overdue = now - user.nextBonusAt;
+    const cycles = Math.floor(overdue / DAY_MS) + 1;
     for (let i = 0; i < cycles; i++) {
-      applyTenPercentOnce();
+      if (user.totalDeposited > 0) {
+        user.totalDeposited = Math.floor(user.totalDeposited * 1.1);
+      }
+      if (user.balance > 0) {
+        user.balance = Math.floor(user.balance * 1.1);
+      } else if (user.totalDeposited > 0) {
+        user.balance = Math.floor(user.totalDeposited * 1.1);
+      }
     }
-    db.lastDailyBonusAt += cycles * DAY_MS;
-    saveDb();
+    user.nextBonusAt += cycles * DAY_MS;
+    return true;
   }
+  return false;
+}
+
+function checkAllUsers24h() {
+  let changed = false;
+  Object.values(db.users || {}).forEach(u => {
+    if (processUser24hInterest(u)) changed = true;
+  });
+  if (changed) saveDb();
 }
 
 function ensureUser(nick) {
@@ -85,7 +130,8 @@ function ensureUser(nick) {
       nick: cleanNick,
       balance: 0,
       totalDeposited: 0,
-      passwordHash: ""
+      passwordHash: "",
+      nextBonusAt: 0
     };
   } else if (!db.users[key].nick) {
     db.users[key].nick = cleanNick;
@@ -93,15 +139,29 @@ function ensureUser(nick) {
   return db.users[key];
 }
 
-function addBalance(nick, amount) {
+function recordDeposit(nick, amount, note) {
   const cleanNick = String(nick || "").trim();
   const key = cleanNick.toLowerCase();
   const value = Math.floor(Number(amount) || 0);
   if (!key || value <= 0) return;
 
   const user = ensureUser(cleanNick);
-  user.balance += value;
-  user.totalDeposited += value;
+  const wasZero = Number(user.totalDeposited || 0) <= 0 && Number(user.balance || 0) <= 0;
+  user.balance = Number(user.balance || 0) + value;
+  user.totalDeposited = Number(user.totalDeposited || 0) + value;
+
+  if (wasZero || !user.nextBonusAt) {
+    user.nextBonusAt = Date.now() + DAY_MS;
+  }
+
+  db.depositHistory.unshift({
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    nick: user.nick,
+    amount: value,
+    note: note || "Wpłata",
+    createdAt: Date.now()
+  });
+
   delete db.pending[key];
   saveDb();
 }
@@ -112,11 +172,18 @@ function upsertUser(nick, balance, totalDeposited) {
   if (!key) return;
 
   const existing = db.users[key];
+  const newBal = Math.max(0, Math.floor(Number(balance) || 0));
+  const newDep = Math.max(0, Math.floor(Number(totalDeposited) || 0));
+
   db.users[key] = {
     nick: cleanNick,
-    balance: Math.max(0, Math.floor(Number(balance) || 0)),
-    totalDeposited: Math.max(0, Math.floor(Number(totalDeposited) || 0)),
-    passwordHash: existing ? existing.passwordHash || "" : ""
+    balance: newBal,
+    totalDeposited: newDep,
+    passwordHash: existing ? existing.passwordHash || "" : "",
+    nextBonusAt:
+      newBal > 0 || newDep > 0
+        ? (existing && existing.nextBonusAt ? existing.nextBonusAt : Date.now() + DAY_MS)
+        : 0
   };
   saveDb();
 }
@@ -126,39 +193,39 @@ function deleteUser(key) {
   if (!k) return;
   delete db.users[k];
   delete db.pending[k];
+  delete db.pendingRegistrations[k];
   saveDb();
 }
 
-function simulateSend(nick, amount, instantCredit) {
-  const cleanNick = String(nick || "").trim();
-  const key = cleanNick.toLowerCase();
-  const value = Math.floor(Number(amount) || 0);
-  if (!key || value <= 0) return;
-
-  if (instantCredit) {
-    addBalance(cleanNick, value);
-  } else {
-    db.pending[key] = { nick: cleanNick, amount: value };
-    saveDb();
-  }
-}
-
 function getPublicState() {
-  check24hBonus();
+  checkAllUsers24h();
+  const now = Date.now();
   const safeUsers = {};
   for (const [k, u] of Object.entries(db.users || {})) {
+    const nextAt = Number(u.nextBonusAt || 0);
     safeUsers[k] = {
       nick: u.nick,
       balance: Number(u.balance || 0),
-      totalDeposited: Number(u.totalDeposited || 0)
+      totalDeposited: Number(u.totalDeposited || 0),
+      nextBonusAt: nextAt,
+      remainingMs: nextAt > now ? nextAt - now : 0
     };
   }
-  const nextBonusInMs = Math.max(0, DAY_MS - (Date.now() - (db.lastDailyBonusAt || Date.now())));
+  const safeRegs = {};
+  for (const [k, r] of Object.entries(db.pendingRegistrations || {})) {
+    safeRegs[k] = {
+      nick: r.nick,
+      amount: r.amount,
+      approved: Boolean(r.approved),
+      createdAt: r.createdAt || 0
+    };
+  }
   return {
     users: safeUsers,
+    pendingRegistrations: safeRegs,
     pending: db.pending || {},
     withdraws: db.withdraws || [],
-    nextBonusInMs
+    depositHistory: db.depositHistory || []
   };
 }
 
@@ -184,12 +251,12 @@ function sendJson(res, code, obj) {
 
 const server = http.createServer((req, res) => {
   try {
-    check24hBonus();
+    checkAllUsers24h();
 
     if (req.method === "GET" && req.url === "/") {
       if (!fs.existsSync(HTML_FILE)) {
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        return res.end("<h1>Bank Nezzi</h1><p>Brak pliku index.html.</p>");
+        return res.end("<h1>Bank banansmp.pl</h1><p>Brak pliku index.html.</p>");
       }
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       return fs.createReadStream(HTML_FILE).pipe(res);
@@ -201,54 +268,107 @@ const server = http.createServer((req, res) => {
 
     if (req.method === "POST") {
       return readBody(req, data => {
-        if (req.url === "/api/auth") {
+        // KROK 1 REJESTRACJI: nick + haslo + potwierdz haslo -> losuje /pay NezziBG 67-1000
+        if (req.url === "/api/register-start") {
           const cleanNick = String(data.nick || "").trim();
           const key = cleanNick.toLowerCase();
           const password = String(data.password || "");
-          const mode = String(data.mode || "login");
+          const confirmPassword = String(data.confirmPassword || "");
 
           if (!cleanNick) {
-            return sendJson(res, 400, { ok: false, error: "Podaj nick z Minecrafta." });
+            return sendJson(res, 400, { ok: false, error: "Podaj nick z gry." });
           }
           if (password.length < 4) {
-            return sendJson(res, 400, { ok: false, error: "Hasło musi mieć co najmniej 4 znaki." });
+            return sendJson(res, 400, { ok: false, error: "Hasło musi mieć minimum 4 znaki." });
+          }
+          if (password !== confirmPassword) {
+            return sendJson(res, 400, { ok: false, error: "Hasła nie są takie same." });
           }
 
           const existing = db.users[key];
-          const hashed = simpleHash(password);
-
-          if (mode === "register") {
-            if (existing && existing.passwordHash) {
-              return sendJson(res, 400, {
-                ok: false,
-                error: "Ten nick ma już konto — kliknij Zaloguj."
-              });
-            }
-            const user = ensureUser(cleanNick);
-            user.passwordHash = hashed;
-            saveDb();
-            return sendJson(res, 200, {
-              ok: true,
-              user: {
-                nick: user.nick,
-                balance: user.balance,
-                totalDeposited: user.totalDeposited
-              }
+          if (existing && existing.passwordHash) {
+            return sendJson(res, 400, {
+              ok: false,
+              error: "Ten nick jest już zarejestrowany — kliknij Zaloguj."
             });
           }
 
+          const amount = Math.floor(Math.random() * (1000 - 67 + 1)) + 67;
+          const token = String(Date.now()) + "_" + Math.floor(Math.random() * 100000);
+
+          db.pendingRegistrations[key] = {
+            nick: existing ? existing.nick : cleanNick,
+            passwordHash: simpleHash(password),
+            amount,
+            token,
+            approved: false,
+            createdAt: Date.now()
+          };
+          saveDb();
+
+          return sendJson(res, 200, {
+            ok: true,
+            nick: db.pendingRegistrations[key].nick,
+            amount,
+            token
+          });
+        }
+
+        // KROK 2 REJESTRACJI: sprawdza czy przelew /pay NezziBG <67-1000> zostal zatwierdzony
+        if (req.url === "/api/register-check") {
+          const cleanNick = String(data.nick || "").trim();
+          const key = cleanNick.toLowerCase();
+          const token = String(data.token || "");
+          const reg = db.pendingRegistrations[key];
+
+          if (!reg || reg.token !== token) {
+            return sendJson(res, 400, {
+              ok: false,
+              error: "Sesja rejestracji wygasła. Kliknij Zarejestruj się ponownie."
+            });
+          }
+
+          if (!reg.approved) {
+            return sendJson(res, 200, { ok: true, approved: false });
+          }
+
+          const user = ensureUser(reg.nick);
+          user.passwordHash = reg.passwordHash;
+          const depositAmount = reg.amount;
+          delete db.pendingRegistrations[key];
+          recordDeposit(user.nick, depositAmount, "Rejestracja /pay");
+
+          return sendJson(res, 200, {
+            ok: true,
+            approved: true,
+            user: {
+              nick: user.nick,
+              balance: user.balance,
+              totalDeposited: user.totalDeposited
+            }
+          });
+        }
+
+        // LOGOWANIE DO ISTNIEJACEGO KONTA
+        if (req.url === "/api/login") {
+          const cleanNick = String(data.nick || "").trim();
+          const key = cleanNick.toLowerCase();
+          const password = String(data.password || "");
+
+          if (!cleanNick || !password) {
+            return sendJson(res, 400, { ok: false, error: "Podaj nick i hasło." });
+          }
+
+          const existing = db.users[key];
           if (!existing || !existing.passwordHash) {
             return sendJson(res, 400, {
               ok: false,
-              error: "Brak konta dla tego nicku — kliknij Zarejestruj się."
+              error: "Nie ma jeszcze takiego konta — kliknij Zarejestruj się."
             });
           }
 
-          if (existing.passwordHash !== hashed) {
-            return sendJson(res, 401, {
-              ok: false,
-              error: "Nieprawidłowe hasło."
-            });
+          if (existing.passwordHash !== simpleHash(password)) {
+            return sendJson(res, 401, { ok: false, error: "Nieprawidłowe hasło." });
           }
 
           return sendJson(res, 200, {
@@ -261,6 +381,7 @@ const server = http.createServer((req, res) => {
           });
         }
 
+        // GENEROWANIE WPLATY PRZEZ GRACZA
         if (req.url === "/api/pending") {
           const nick = String(data.nick || "").trim();
           const amount = Math.floor(Number(data.amount) || 0);
@@ -275,6 +396,7 @@ const server = http.createServer((req, res) => {
           return sendJson(res, 200, { ok: true, amount });
         }
 
+        // WYPLATA SRODKOW
         if (req.url === "/api/withdraw") {
           const key = String(data.nick || "").trim().toLowerCase();
           const password = String(data.password || "");
@@ -306,19 +428,46 @@ const server = http.createServer((req, res) => {
           });
         }
 
-        if (data.pass !== PASS) {
-          return sendJson(res, 403, { error: "Brak dostępu." });
+        // LOGOWANIE DO PANELU ADMINA (haslo glowne lub wygenerowane konto admina)
+        if (req.url === "/api/admin-login") {
+          if (!isValidAdminAuth(data)) {
+            return sendJson(res, 403, { ok: false, error: "Błędny login lub hasło admina." });
+          }
+          return sendJson(res, 200, {
+            ok: true,
+            isMaster: isMasterAdmin(data),
+            admins: isMasterAdmin(data) ? db.admins : []
+          });
         }
 
-        if (req.url === "/api/save-user") {
+        if (!isValidAdminAuth(data)) {
+          return sendJson(res, 403, { ok: false, error: "Brak dostępu admina." });
+        }
+
+        if (req.url === "/api/approve-registration") {
+          const key = String(data.key || "").trim().toLowerCase();
+          if (db.pendingRegistrations[key]) {
+            db.pendingRegistrations[key].approved = true;
+            saveDb();
+          }
+        } else if (req.url === "/api/approve") {
+          const item = db.pending[String(data.key || "").toLowerCase()];
+          if (item) recordDeposit(item.nick, item.amount, "Wpłata /pay");
+        } else if (req.url === "/api/simulate-send") {
+          const cleanNick = String(data.nick || "").trim();
+          const amount = Math.floor(Number(data.amount) || 0);
+          if (cleanNick && amount > 0) {
+            if (data.instant) {
+              recordDeposit(cleanNick, amount, "Wpłata /pay");
+            } else {
+              db.pending[cleanNick.toLowerCase()] = { nick: cleanNick, amount };
+              saveDb();
+            }
+          }
+        } else if (req.url === "/api/save-user") {
           upsertUser(data.nick, data.balance, data.totalDeposited);
         } else if (req.url === "/api/delete-user") {
           deleteUser(data.key);
-        } else if (req.url === "/api/simulate-send") {
-          simulateSend(data.nick, data.amount, Boolean(data.instant));
-        } else if (req.url === "/api/approve") {
-          const item = db.pending[String(data.key || "").toLowerCase()];
-          if (item) addBalance(item.nick, item.amount);
         } else if (req.url === "/api/done-withdraw") {
           const w = db.withdraws.find(x => x.id === data.id);
           if (w) {
@@ -326,12 +475,41 @@ const server = http.createServer((req, res) => {
             saveDb();
           }
         } else if (req.url === "/api/interest") {
-          applyTenPercentOnce();
-          db.lastDailyBonusAt = Date.now();
+          Object.values(db.users || {}).forEach(u => {
+            if (u.totalDeposited > 0) u.totalDeposited = Math.floor(u.totalDeposited * 1.1);
+            if (u.balance > 0) u.balance = Math.floor(u.balance * 1.1);
+            if (u.totalDeposited > 0 || u.balance > 0) {
+              u.nextBonusAt = Date.now() + DAY_MS;
+            }
+          });
           saveDb();
+        } else if (req.url === "/api/admin-generate") {
+          if (!isMasterAdmin(data)) {
+            return sendJson(res, 403, { ok: false, error: "Tylko główny admin może tworzyć adminów." });
+          }
+          const creds = generateAdminCredentials();
+          const newAdmin = {
+            id: Date.now() + Math.floor(Math.random() * 1000),
+            login: creds.login,
+            password: creds.password,
+            createdAt: Date.now()
+          };
+          db.admins.unshift(newAdmin);
+          saveDb();
+          return sendJson(res, 200, { ok: true, admin: newAdmin, admins: db.admins });
+        } else if (req.url === "/api/admin-delete") {
+          if (!isMasterAdmin(data)) {
+            return sendJson(res, 403, { ok: false, error: "Tylko główny admin może usuwać adminów." });
+          }
+          db.admins = db.admins.filter(a => a.id !== data.id);
+          saveDb();
+          return sendJson(res, 200, { ok: true, admins: db.admins });
         }
 
-        return sendJson(res, 200, { ok: true });
+        return sendJson(res, 200, {
+          ok: true,
+          admins: isMasterAdmin(data) ? db.admins : []
+        });
       });
     }
 
@@ -344,5 +522,6 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log("Bank Nezzi działa na porcie", PORT);
+  console.log("Bank banansmp.pl działa na porcie", PORT);
 });
+          
